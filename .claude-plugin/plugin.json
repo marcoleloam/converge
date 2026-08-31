@@ -2,7 +2,7 @@
   "name": "converge",
   "displayName": "Converge",
   "description": "Compile intent into shipped software — eleven orchestration and assurance skills around the independently versioned Task-Spec engine, plus the cvg referee CLI; done is proven by runnable evals, never claimed by the agent.",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "author": {
     "name": "Luan Moreno M. Maciel"
   },

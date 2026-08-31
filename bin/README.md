@@ -1,4 +1,4 @@
-# cvg 0.2.0
+# cvg 0.2.1
 
 `cvg` is the Converge composition coordinator and assurance referee. It
 preserves the established command paths, delegates Task-Spec lifecycle

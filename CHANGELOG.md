@@ -42,7 +42,7 @@ the standalone repository.
   `path:` into `_state.yaml`, so a committed index would embed the developer's
   home directory. `bin/cvg`, `install.sh`, compose negotiation, and
   `tests/test-version-unity.sh` now reject anything outside 3.8.x.
-- **Cockpit `package.json` is 0.2.0**, the same number as `VERSION`. The
+- **Cockpit `package.json` matches `VERSION`.** The
   “one package, one version” gate now reads it.
 
 ### Fixed
@@ -58,6 +58,21 @@ the standalone repository.
   trust, generated CLI). Repository map lists `scripts/`, `evidence/`, and
   `assets/`. Local `make check` documents the 3.8.0 / 0.2.0 engine pins and
   the `jsonschema` requirement.
+
+## [0.2.1] — 2026-08-31
+
+### Added
+- **`cvg next --guided`** turns the evidence-derived next-pass boundary into four
+  choices — `CONTINUE`, `EXPLAIN`, `INSPECT`, or `PAUSE` — without a second loop
+  or stored chat state. Contract: `skills/evidence-to-next-pass/references/guided-chat-contract.md`.
+- **Three new CLI forms** in the public matrix (57 → 60): `next --guided`,
+  `next pre <n> --guided`, and `next post <n> --guided`.
+
+### Changed
+- Chat, CLI, and skills docs describe the opt-in guided path; `cvg next pre N`
+  / `cvg next post N` are the canonical pre/post invocations.
+
+Fork sync from `luanmorenommaciel/converge` `f6df8af` (2026-08-28).
 
 ## [0.2.0] — 2026-08-17
 
@@ -1398,6 +1413,7 @@ the autonomy-contract producer.
 Initial public release. The 4-zone EDD format with frontmatter + runnable bash
 evals + validation card. See git history for the full change set.
 
-[Unreleased]: https://github.com/luanmorenommaciel/converge/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/luanmorenommaciel/converge/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/luanmorenommaciel/converge/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/luanmorenommaciel/converge/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/luanmorenommaciel/converge/releases/tag/v0.1.0

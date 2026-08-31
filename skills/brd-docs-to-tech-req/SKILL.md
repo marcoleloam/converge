@@ -2,7 +2,7 @@
 name: brd-docs-to-tech-req
 description: Transforms a client BRD (cvg/docs/brd/|.pdf) into a verifiable tech-spec (cvg/docs/tech-spec/) — the engineering solution shape for the client's problem. Implements Converge Pass 1 (Intent), the top of the chain. Use when a brief has landed and someone says "turn this brief into a tech-spec", "start Converge pass 1", or "what are we actually building here". Runs the Understand / Prior-art / Interrogate (frontier rounds with recommended defaults, gap register) / Crystallize steps and gates on restating the problem in one paragraph AND the spec answers it, every requirement falsifiable and prioritized, success metrics traced to the BRD's KPIs, no unresolved blocker gaps. Stays above the stack — no schema, no engine choice. Do NOT use for architecture or stack decisions (that is Pass 3), when a signed-off tech-spec already exists (go to Pass 2, tech-req-to-adrs), or when no BRD exists at all (run Pass 0, idea-to-brd, to capture the brief first). Engine/format bound via flags, never baked into the name.
 metadata:
-  version: "0.2.0"
+  version: "0.2.1"
 ---
 
 # brd-docs-to-tech-req — Converge Pass 1 (Intent)

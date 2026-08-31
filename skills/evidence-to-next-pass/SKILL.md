@@ -2,7 +2,7 @@
 name: evidence-to-next-pass
 description: Converge descent conductor — derives the current and next pass from workspace evidence, enforces order with fail-closed pre/post hooks, and hands the agent the owning pass prompt. Use when someone asks "what's next", "where are we", "continue", "start pass N", "guide me through Converge", or requests a step-by-step or guided chat. In guided chat, present the stable choices from `cvg next --guided` and wait at every pass boundary; never infer CONTINUE. Run the pre-hook first, the pass prompt second, and the post-hook plus authoritative gate last. Do NOT use this skill to waive a gate, treat evidence presence as a verdict, or pick a lane (`cvg lane` owns that).
 metadata:
-  version: "0.2.0"
+  version: "0.2.1"
   compatibility: "Converge chain · sequence layer above all passes. Engine/tracker-agnostic; bash 3.2+ (macOS system bash safe); read-only — never mutates the workspace."
 ---
 

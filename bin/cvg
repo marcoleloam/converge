@@ -17,7 +17,7 @@
 
 set -euo pipefail
 
-CVG_VERSION="0.2.0"
+CVG_VERSION="0.2.1"
 CVG_TASKSPEC_REQUIRED="3.8.0"
 
 # Resolve THIS script through any symlink chain before locating its companions.

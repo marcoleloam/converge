@@ -12,7 +12,7 @@ description: >-
   — that is Pass 3 planning; stay at terrain altitude.
   Engine is Claude Code on the repo; engine/tracker-agnostic, no baked names.
 metadata:
-  version: "0.2.0"
+  version: "0.2.1"
   converge_pass: 2
   pass_name: structure
   compatibility: "Claude Code; bash 3.2+ (macOS system bash safe)"

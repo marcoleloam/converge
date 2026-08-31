@@ -143,7 +143,7 @@ jsonschema.validate(value, schema)
 assert value["contract"] == "ConvergeCompositionReceipt/v1"
 assert value["dispatch_authorized"] is False
 assert value["versions"] == {
-    "converge": "0.2.0",
+    "converge": "0.2.1",
     "seamwise": "0.2.0",
     "task_spec": "3.8.0",
 }

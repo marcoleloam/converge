@@ -30,6 +30,6 @@ assert not any(path.startswith("skills/task-spec/") for path in files), "embedde
 assert not any("seamwise" in path.lower() and path.startswith(("src/", "vendor/", "skills/")) for path in files), "embedded Seamwise implementation shipped"
 debris = [path for path in files if re.search(r"(^|/)(__pycache__|node_modules|test-results|playwright-report)(/|$)", path) or path.endswith((".pyc", ".pyo", ".DS_Store", ".tsbuildinfo"))]
 assert not debris, f"package contains runtime debris: {debris}"
-assert payload["version"] == "0.2.0"
+assert payload["version"] == "0.2.1"
 print(f"PACKAGE=READY files={len(files)} skills={len(skills)}")
 PY

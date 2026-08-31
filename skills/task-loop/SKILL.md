@@ -2,7 +2,7 @@
 name: task-loop
 description: The single execution loop for Converge Pass 8 (The Loop). Takes ONE issue (--issue N passed by a human or CI), verifies its Pass 7 execution profile, reads its signed Task-Spec and hash-bound evidence, cuts a branch, writes code, and runs the task's own eval in a bounded refinement loop until GREEN, then enforces the path policy and opens a PR. Use when a user or CI says "run issue N", "execute this task", "build task T-...", "work the loop", or "drive this issue to a green-eval PR". Knows one task deeply and never picks which task to run. Do NOT use to choose or fan out across tasks; that is the Manager, a future CI/CD concern outside the pass chain.
 metadata:
-  version: "0.2.0"
+  version: "0.2.1"
   compatibility: "Converge chain Pass 8; consumes cvg/tasks/T-*.md (then tasks/) + cvg/execution/<task-id>/execution-profile.yaml, resolved against the workspace and not the git root; any stack"
 ---
 

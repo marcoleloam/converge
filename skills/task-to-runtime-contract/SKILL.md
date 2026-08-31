@@ -2,7 +2,7 @@
 name: task-to-runtime-contract
 description: Bind one signed Converge Task-Spec to an enforceable, task-scoped runtime contract, and emit the task brief the worker reads. Use for Pass 7 · Bind (7A contract + 7B brief), after Pass 6 Register (opt-in) and before task-loop executes the issue, when the executor needs a hash-bound evidence slice, explicit topology, portable path guards, vendor adapter manifests, a task-scoped brief, pinned documentation, and a deterministic CHECK_RUNTIME_CONTRACT verdict. Replaces the legacy standing-agent-fleet harness workflow; do not use to author Task-Specs, select work across tasks, or execute the task.
 metadata:
-  version: "0.2.0"
+  version: "0.2.1"
 ---
 
 # task-to-runtime-contract — Pass 7 · Bind (7A contract + 7B brief)

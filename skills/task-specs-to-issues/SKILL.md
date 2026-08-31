@@ -2,7 +2,7 @@
 name: task-specs-to-issues
 description: Converge Pass 6 (Register) — optional, like Capture (Pass 0). Register a backlog of signed-off Task-Specs (tasks/T-*.md) as tracker issues — one issue per task-spec, with blocked-by links carrying the dependency graph — so the execution loop reads a board instead of repo files. The tracker is a pluggable backend behind a six-verb adapter (preflight · upsert · link · list-ready · list-issues · write-result), selected by --tracker github|linear|jira (default linear), never baked into the name. After each upsert it stamps a tracker_ref backlink back into the spec (the issue-side marker stays the idempotency key). Use when the user says register the tasks, push tasks to Linear, push tasks to GitHub issues, task-specs to issues, or bridge the backlog onto a tracker. Skip it to keep the queue repo-local in tasks/. Not for authoring tasks (that is Pass 5 task-spec) and not for running them (that is Pass 8 task-loop).
 metadata:
-  version: "0.2.0"
+  version: "0.2.1"
 ---
 
 # task-specs-to-issues — Pass 6 · Register (opt-in)

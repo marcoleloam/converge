@@ -179,7 +179,7 @@ assert receipt["contract"] == "ConvergeCompositionReceipt/v1"
 assert receipt["dispatch_authorized"] is False
 assert receipt["source"]["commit"] == source_commit
 assert receipt["versions"] == {
-    "converge": "0.2.0",
+    "converge": "0.2.1",
     "seamwise": "0.2.0",
     "task_spec": "3.8.0",
 }
@@ -352,7 +352,7 @@ snapshot = {
 environment = {
     "contract": "ComposedDemoEnvironment/v1",
     "versions": {
-        "converge": "0.2.0",
+        "converge": "0.2.1",
         "task_spec": output([taskspec, "version"]),
         "seamwise": output([seamwise, "--version"]),
         "executor": output(["codex", "--version"]) if agent == "codex" else "deterministic-fixture/v1",

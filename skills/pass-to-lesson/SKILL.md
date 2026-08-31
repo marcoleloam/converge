@@ -2,7 +2,7 @@
 name: pass-to-lesson
 description: Converge teaching companion — optional after ANY pass. Turns a just-closed pass's artifacts (BRD, tech-spec, ADRs, plans, specs, task-specs, harness, PRs) into a durable lesson at cvg/docs/lessons/lesson-*.md plus a spoken-style walkthrough, so the owner understands what the autonomous chain built — every component, the decision it encodes, what breaks downstream without it, and the roads not taken. Use when someone says "teach me what was built", "explain this pass", "walk me through the tech-spec/ADRs/plans", "debrief the pass", "what did you just do and why", or "start the lesson". Runs Locate / Read / Teach / Quiz and gates on every emitted artifact appearing in the walkthrough, every decision naming a rejected alternative, every term of art defined at first use, and the lesson ending in check-yourself questions. Explains decisions, never reopens them. Do NOT use to run a pass (each pass has its own skill) or to review/attack artifacts (that is Pass 4, sketch-plans-adversarial-review).
 metadata:
-  version: "0.2.0"
+  version: "0.2.1"
   compatibility: "Converge chain · teaching companion (optional, after any pass gate). Engine/tracker-agnostic; bash 3.2+ (macOS system bash safe)."
 ---
 

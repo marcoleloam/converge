@@ -1,6 +1,6 @@
 # Installation
 
-Converge 0.2.0 requires Task-Spec **3.8.x** for every install. Seamwise **0.2.x**
+Converge 0.2.1 requires Task-Spec **3.8.x** for every install. Seamwise **0.2.x**
 is required only for `cvg decompose` and `cvg compose`. Node 22 is required only
 for the npm door and Cockpit.
 

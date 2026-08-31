@@ -1,5 +1,5 @@
 #!/bin/bash
-# test-cvg-json-envelope.sh — the agent-native output layer (cvg 0.2.0):
+# test-cvg-json-envelope.sh — the agent-native output layer (cvg 0.2.1):
 # the uniform --json response envelope {ok,data,error,meta,…} on every command, and
 # --dry-run on mutations. Proves, discriminating:
 #   · the envelope carries every SOTA key + a versioned meta
@@ -393,7 +393,7 @@ assert 'compose materialize' in d['data']['output']" 2>/dev/null \
 jrun --json version | python3 -c "import json,sys
 d=json.load(sys.stdin)
 assert d['contract']=='ConvergeCLIResult/v1' and d['command']=='version' and d['ok'] is True
-assert '0.2.0' in d['data']['output']" 2>/dev/null \
+assert '0.2.1' in d['data']['output']" 2>/dev/null \
   && ok "version uses ConvergeCLIResult/v1" || bad "version under --json" "not universally enveloped"
 
 echo

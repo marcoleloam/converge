@@ -2,7 +2,7 @@
 name: idea-to-brd
 description: Converge Pass 0 (Capture) — optional, like Register (Pass 6). Turns a raw idea with no client brief — a founder thought, an internal itch, a voice-note transcript — into a BRD (cvg/docs/brd/ or .pdf) written in the owner's voice, so Pass 1 can consume it unchanged — or into a no-go record when the pain doesn't justify a build. Use when someone says "I have an idea", "capture this idea", "write the brief", "grill me about this idea", or "start Converge pass 0". Runs Scope-check / Grill (frontier rounds — every unblocked question at once with defaults, one reply per round; facts looked up, do-nothing cost probed, pre-mortem run) / Draft / Self-review and gates on the pain carrying a provenance-tagged number, at least one KPI in the owner's terms, in/out scope each non-empty, and every open question owned. Produces the brief, NEVER the spec — no requirements, no solution shape, no technology. Do NOT use when a BRD exists (enter at Pass 1) or to write a tech-spec (that IS Pass 1).
 metadata:
-  version: "0.2.0"
+  version: "0.2.1"
   compatibility: "Converge chain Pass 0 · Capture (optional). Runs before Pass 1 (brd-docs-to-tech-req) when no BRD exists. Engine/tracker-agnostic; bash 3.2+ (macOS system bash safe)."
 ---
 

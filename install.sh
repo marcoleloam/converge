@@ -8,7 +8,7 @@
 #                  → <target>/.grok/skills/*     for Grok Build
 #   2. the CLI     → `cvg` on your PATH          so the gates are runnable by hand
 #
-# Copy (default) pins the complete 0.2.0 tool surface so a consuming repository
+# Copy (default) pins the complete 0.2.1 tool surface so a consuming repository
 # does not depend on this checkout. `--symlink` is the explicit development mode.
 #
 # It also works with no checkout at all — the one-line install:

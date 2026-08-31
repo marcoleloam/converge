@@ -2,7 +2,7 @@
 name: sketch-plans-adversarial-review
 description: Runs the Pass 3 swimlane plans through a different-family model as adversary, sharpens them in place, and ends at THE BARRIER — the owner's sign-off, the last human decision before the machine builds. Implements Converge Pass 4 (Consensus), the boundary between Phase 1 (human-led design, passes 0-4) and Phase 2 (machine-led build, passes 5-8). Use when the user says "adversarial review", "consensus pass", "attack the plans", "have Codex refute this", "sign off the plans", or "find what bites us at build time". Engine-agnostic via flags — the adversary is --adversary codex|kimi|gemini (default codex), never baked into the name; no tracker. Do NOT use to write new plans (that is Pass 3 reqs-to-swimlane-plans) or to cut tasks (that is Pass 5 task-spec) — this pass only hardens existing plans and takes the sign-off.
 metadata:
-  version: "0.2.0"
+  version: "0.2.1"
   compatibility: "Converge chain Pass 4 · Consensus — THE BARRIER. Runs after Pass 3 (reqs-to-swimlane-plans), before Pass 5 (task-spec). Engine/tracker-agnostic."
 ---
 
