@@ -32,6 +32,7 @@ flowchart LR
 | Evals, handoff, acceptance | Task-Spec | Executor narration is not evidence |
 | Cross-engine sequence and composition receipt | Converge | Receipt does not authorize dispatch |
 | Workspace observation | Cockpit | Observer cannot mutate canonical state |
+| Document-memory binding and retrieval | Converge `memory` | Notes and search results never authorize or accept work |
 
 ## How the boundary is enforced
 
@@ -45,3 +46,8 @@ it claims `materializes_tasks` or `dispatch_authority`. It asks Task-Spec for
 
 The composition receipt always records `dispatch_authorized: false`. Only
 `taskspec gate --stamp` may flip `signed_off` on a leaf.
+
+`ConvergeMemory/v1` always records `execution_authorized: false`. The native
+entry skill can retrieve context, but current engine receipts and gates—not
+remembered notes—decide execution and settlement. Migrating a vault never
+migrates authorization from a historical demand.

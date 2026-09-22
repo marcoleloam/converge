@@ -118,12 +118,12 @@ which it ignored — so the gate can refuse to pretend.
 
 Current matrix (what each runtime genuinely provides):
 
-| capability | generic | claude | codex | kimi |
-|---|---|---|---|---|
-| `fs.write` | detect | detect | detect | detect |
-| `proc.exec` | — | **prevent** | **prevent** | — |
-| `net.egress` | — | **prevent** | **prevent** | — |
-| `vcs.push` | detect | detect | **prevent** | detect |
+| capability | generic | claude | codex | kimi | omp |
+|---|---|---|---|---|---|
+| `fs.write` | detect | detect | detect | detect | detect |
+| `proc.exec` | — | **prevent** | **prevent** | — | — |
+| `net.egress` | — | **prevent** | **prevent** | — | — |
+| `vcs.push` | detect | detect | **prevent** | detect | detect |
 
 *Claude:* Bind emits a valid PreToolUse settings fragment whose hook returns
 `permissionDecision: "deny"` for disallowed Edit/Write/NotebookEdit paths. That
@@ -131,8 +131,11 @@ is prevention only after a dispatcher installs the fragment, and Bash remains a
 broader write surface, so the profile's guaranteed task-scope assurance stays
 **detect**. *Codex:* the workspace sandbox can prevent writes outside its
 writable roots, but it does not natively narrow those roots to Task-Spec
-subpaths; that finer boundary is also **detect** at postflight. Generic/Kimi
-likewise use the portable postflight. The table reports the guarantee the
+subpaths; that finer boundary is also **detect** at postflight. Generic/Kimi/OMP
+likewise use the portable postflight. OMP is a `cvg loop` engine adapter, not
+TaskMesh; it has no prevent-level FS or network sandbox in this integration, and
+there is no OMP judge recipe. `cvg doctor runtime-contract --runtime omp` FAILs
+when the `omp` binary is missing. The table reports the guarantee the
 generated profile actually wires, not the strongest feature a vendor could
 provide in a separately configured environment.
 
@@ -143,6 +146,7 @@ provide in a separately configured environment.
 ```bash
 cvg bind --task tasks/T-x.md --runtime codex --require net.egress   # PASS: seccomp blocks it
 cvg bind --task tasks/T-x.md --runtime generic --require net.egress # FAIL: nothing can enforce it
+cvg bind --task tasks/T-x.md --runtime omp --require net.egress     # FAIL: detect-only, like kimi
 ```
 
 The failure is the feature:

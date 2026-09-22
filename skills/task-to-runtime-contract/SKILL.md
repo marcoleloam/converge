@@ -83,7 +83,8 @@ cvg/execution/<task-id>/
     ├── generic.json
     ├── claude.json
     ├── codex.json
-    └── kimi.json
+    ├── kimi.json
+    └── omp.json
 ```
 
 `execution-profile.yaml` uses the JSON subset of YAML 1.2 so every consumer can

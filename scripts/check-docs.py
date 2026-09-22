@@ -120,8 +120,9 @@ def main() -> int:
 
     matrix = json.loads((ROOT / "contracts" / "cli-command-matrix.json").read_text())
     names = [row["name"] for row in matrix.get("commands", [])]
-    if matrix.get("contract") != "ConvergeCLICommandMatrix/v1" or len(names) != 60 or len(set(names)) != 60:
-        fail("canonical CLI matrix must contain 60 unique forms", failures)
+    if (matrix.get("contract") != "ConvergeCLICommandMatrix/v1"
+            or len(names) != matrix.get("command_count") or len(set(names)) != len(names)):
+        fail("canonical CLI matrix count must match its unique forms", failures)
     compose = {name for name in names if name.startswith("compose ")}
     if compose != {
         "compose prepare --source <recipe>",
@@ -166,7 +167,7 @@ def main() -> int:
     if failures:
         print(f"DOCS=BLOCKED failures={len(failures)}")
         return 1
-    print(f"DOCS=READY files={len(CANONICAL)} commands=60")
+    print(f"DOCS=READY files={len(CANONICAL)} commands={len(names)}")
     return 0
 
 

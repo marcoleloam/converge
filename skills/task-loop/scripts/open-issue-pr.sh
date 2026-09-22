@@ -19,7 +19,7 @@
 # Usage:
 #   bash open-issue-pr.sh --issue <id|slug|path> [--dry-run] [--base COMMIT]
 #                         [--pr-base BRANCH]
-#                         [--agent claude|codex|kimi] [--tasks-dir DIR]
+#                         [--agent claude|codex|kimi|omp] [--tasks-dir DIR]
 #                         [--contract PROFILE] [--handoff TaskHandoff/v3]
 #                         [--legacy-no-contract]
 #

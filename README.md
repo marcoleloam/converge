@@ -29,7 +29,7 @@ their implementations.
 |---|---|
 | Seamwise | Evidence-backed seams, swimlanes, capability legs, reviewed decomposition, `TaskPlan/v1`, and lineage |
 | Task-Spec | TaskPlan validation, materialization, Task-Spec structure, authorization, handoff, evals, and acceptance |
-| Converge | Cross-engine sequencing, executable binding, bounded execution, settlement, and composition receipts |
+| Converge | Cross-engine sequencing, executable binding, bounded execution, settlement, composition receipts, and project document memory |
 | Human reviewer | Acceptance of Seamwise topology and explicit risk decisions |
 | Executor | Product-code changes inside the authorized runtime contract; never self-acceptance |
 
@@ -38,9 +38,13 @@ review does not authorize task dispatch, a Task-Spec materialization receipt
 does not sign a task, and model narration is never settlement evidence. The
 full non-authority table is in [docs/concepts/authority.md](docs/concepts/authority.md).
 
+Project memory supplies cited context, never execution authority. `cvg memory`
+owns the existing QMD/BM25 document index and external vault binding; no separate
+darkfactory install, agent, hook, or orchestration wrapper is required.
+
 ## Why the skills exist
 
-The CLI is the referee. Skills exist so a chat agent finds the next pass without reading the whole method. The installer projects **exactly eleven** Converge skills to `.agents/skills/`, `.claude/skills/`, and `.grok/skills/`. Pass 5 Tasking is standalone [`taskspec`](https://github.com/luanmorenommaciel/task-spec), not a mirrored skill.
+The CLI is the referee. Skills exist so a chat agent finds the next pass without reading the whole method. The installer projects the native [`converge`](skills/converge/) entry plus eleven method skills to `.agents/skills/`, `.claude/skills/`, and `.grok/skills/`. Pass 5 Tasking is standalone [`taskspec`](https://github.com/luanmorenommaciel/task-spec), not a mirrored skill.
 
 <table>
 <tr>
@@ -154,6 +158,11 @@ Full descent guide: [docs/guides/descent.md](docs/guides/descent.md).
 
 ## Chat experience
 
+Start with `/skill:converge` in a harness that exposes skill commands. It reads
+the current demand through `cvg deliver status`, retrieves bounded project
+memory, and uses the existing delivery conductor. It does not replace owner
+approval, Task-Spec authorization, or independent acceptance.
+
 The descent conductor ([`evidence-to-next-pass`](skills/evidence-to-next-pass/)) owns the canonical pass prompts and the sequence itself. When the user asks to go step by step, `cvg next --guided` turns the same evidence-derived boundary into four choices—`CONTINUE`, `EXPLAIN`, `INSPECT`, or `PAUSE`—and waits. It creates no second loop and stores no chat state.
 
 ### The four-step chat path
@@ -186,7 +195,7 @@ Pass 5 has no Converge pass-prompt — it uses the standalone Task-Spec CLI dire
 
 No Cursor dest exists in `install.sh`.
 
-**Claude Code plugin.** Claude Code can also load `.claude-plugin/` (`plugin.json` + `marketplace.json`): eleven owned skills + `cvg`; Task-Spec independently installed at 3.8 or 3.9.
+**Claude Code plugin.** Claude Code can also load `.claude-plugin/` (`plugin.json` + `marketplace.json`): the native entry and method skills + `cvg`; Task-Spec independently installed at 3.8 or 3.9.
 
 **Router scaffold.** `cvg setup harness` scaffolds `AGENTS.md` (~50 lines, routing only, non-clobbering). Bind (Pass 7B) emits `AGENTS.task.md` (identifiers, not content).
 
@@ -234,6 +243,36 @@ git commit -m "authorize and bind health status task"
 cvg loop --issue T-20260815-health-status --agent codex
 ```
 
+### One demand, from intent to an integrated delivery
+
+```bash
+cvg deliver start --demand health --intent intent.txt
+# DELIVERY=ALIGNMENT_REQUIRED; inspect the returned alignment packet and recipe.
+
+# One explicit owner action accepts that topology and authorizes its concrete leaves:
+cvg deliver authorize --demand health --reviewer repository-owner --alignment-digest "<returned-sha256>"
+# Native compose → Task-Spec authorization → bind → loop → independent acceptance → integration.
+
+cvg deliver status --demand health --json
+cvg deliver resume --demand health
+```
+
+Converge keeps each demand in an isolated clone under the source repository's Git
+common directory. Another demand's backlog, signatures, or progress are not inherited.
+The existing engines own decomposition, materialization, authorization, and acceptance;
+`deliver` conducts them rather than replacing their contracts.
+
+Preparation repairs are bounded by `--preparation-attempts`; `--max-seconds` bounds
+the demand. The native loop retains its attempt identity and remaining budgets on
+resume, refuses concurrent dispatch, and repairs a tier-2 refutation without another
+routine owner prompt. `--agent` supports `codex`, `claude`, or `kimi`; the independent
+`--judge` defaults to `claude` and must be from a different model family.
+
+`DELIVERY=READY_FOR_ACCEPTANCE` means matching native acceptance records plus a
+successful integration command on the delivered revision. It does **not** mean
+business acceptance, merge, publication, or deployment. Source product changes must
+be committed before starting; project control-plane files are isolated, not reused.
+
 ### Pass verbs
 
 ```bash
@@ -262,6 +301,33 @@ cvg loop --issue T-20260815-health-status --agent codex
 - `COMPOSE=BLOCKED`
 - `COMPOSE=ENGINE_UNAVAILABLE`
 
+### Project document memory
+
+These additions are unreleased. Install this checkout to use them rather than
+an older release tag:
+
+```bash
+bash /path/to/this-checkout/install.sh --target /absolute/path/to/project --copy
+cd /absolute/path/to/project
+cvg setup memory                 # explicit dependency setup + init or migration
+cvg memory status
+cvg memory search "domain terms" --limit 3 --max-bytes 2400
+cvg memory read vault/notes/decision.md --from 1 --lines 40
+cvg memory refresh               # rebuild after source changes
+```
+
+For an existing darkfactory binding, `cvg memory migrate` adopts the same
+external vault and project identity, backs up ownership metadata, and copies
+historical decisions/loops/queue/refs to `cvg/brain/` without overwriting
+different content. `init` refuses an unmigrated binding. No notes or signed
+backlog are discarded. Local binding, manifest, and derived index live in
+gitignored `.cvg/memory/`; operational reads do not fall back to darkfactory.
+
+Plain `cvg setup` inspects memory without installing or writing. The document
+index reports `READY`, `STALE`, `UNINITIALIZED`, or `ERROR`; stale search/read
+fail closed until `refresh`. Memory is optional and never changes execution
+authorization. Codebase indexing remains separate and planned.
+
 ### Machine contract
 
 Every public form accepts global `--json` and `--dry-run` in any position.
@@ -273,7 +339,7 @@ cvg agent-context --json
 cvg compose --json status
 ```
 
-`--json` emits one `ConvergeCLIResult/v1` document. The canonical 60-form matrix is [contracts/cli-command-matrix.json](contracts/cli-command-matrix.json); the human reference is [docs/reference/cli.md](docs/reference/cli.md).
+`--json` emits one `ConvergeCLIResult/v1` document. The canonical command matrix is [contracts/cli-command-matrix.json](contracts/cli-command-matrix.json); the human reference is [docs/reference/cli.md](docs/reference/cli.md). Delivery reports are available as `data.delivery`, memory reports as `data.memory` (`ConvergeMemory/v1`, always `execution_authorized: false`).
 
 Task-Spec **3.8.x and 3.9.x** are accepted. The reviewed pin remains **3.8.0**. `cvg` passes physical workspace paths so 3.9 `rebuild-state` does not write an absolute `path:` into `_state.yaml`.
 
@@ -286,7 +352,7 @@ Task-Spec **3.8.x and 3.9.x** are accepted. The reviewed pin remains **3.8.0**. 
 - Python 3
 - Task-Spec 3.8.x or 3.9.x for every Converge installation (reviewed pin: Task-Spec 3.8.0)
 - Seamwise 0.2.0 only for decomposition and `cvg compose`
-- Node 22 only for the npm door and Cockpit
+- Node.js >=22.17 and npm for document memory; Node 22 or newer for the npm door and Cockpit
 
 Install the published stack in dependency order:
 
@@ -314,7 +380,7 @@ or:
 CVG_REF=v0.2.0   bash -c "$(curl -fsSL https://raw.githubusercontent.com/luanmorenommaciel/converge/main/install.sh)"
 ```
 
-The installer projects exactly eleven Converge skills to `.agents/skills/`,
+The installer projects the native entry and eleven method skills to `.agents/skills/`,
 `.claude/skills/`, and `.grok/skills/`. It installs no Task-Spec or Seamwise
 implementation. The repository is private; all install doors require access.
 
@@ -354,10 +420,10 @@ decisions.
 | [Getting started](docs/getting-started/index.md) | Install, first composed leaf, reviewer route |
 | [Descent guide](docs/guides/descent.md) | Two phases, one barrier, workspace discovery |
 | [Chat guide](docs/guides/chat.md) | Four-step path, opt-in guided choices, harness dests, plugin |
-| [Skills reference](docs/concepts/skills.md) | Eleven skills + standalone Tasking |
+| [Skills reference](docs/concepts/skills.md) | Native entry, method skills, and standalone Tasking |
 | [Authority](docs/concepts/authority.md) | Who may decide what |
 | [Trust](docs/trust/index.md) | What a receipt proves and what it does not |
-| [CLI reference](docs/reference/cli.md) | Generated 60-form table |
+| [CLI reference](docs/reference/cli.md) | Generated command matrix |
 | [Contracts](contracts/README.md) | Versioned JSON schemas |
 | [Skill catalog](skills/README.md) | Deep essays on each pass |
 | [Cockpit](apps/cockpit/README.md) | Read-only observer |
@@ -369,9 +435,10 @@ decisions.
 |---|---|
 | `bin/` | Stable CLI plus focused private helpers |
 | `contracts/` | Canonical CLI matrix and versioned JSON Schemas |
-| `skills/` | Exactly eleven Converge orchestration and assurance skills |
+| `skills/` | Native Converge entry and method skills |
 | `apps/cockpit/` | Read-only observer UI |
 | `templates/` | Consumer workspace templates |
+| `tools/` | Internal document-memory module, lockfile, license, and regression suite |
 | `tests/` | Hermetic gate, install, loop, JSON, and composed-flow suites |
 | `scripts/` | Docs, package, release, and evidence tooling |
 | `evidence/` | Retained live-executor traces for named release gates |
@@ -380,8 +447,9 @@ decisions.
 
 ## Verification
 
-`make bootstrap` assembles the pinned pairing under `.engines/` and `.venv/`,
-after which `make check` needs no exported paths. See [CONTRIBUTING.md](CONTRIBUTING.md).
+`make bootstrap` assembles the pinned pairing under `.engines/` and `.venv/`
+and installs the locked memory dependencies, after which `make check` needs no
+exported paths. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ```bash
 make check

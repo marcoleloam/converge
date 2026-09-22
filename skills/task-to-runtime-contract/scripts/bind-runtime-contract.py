@@ -12,6 +12,7 @@ from pathlib import Path
 from _runtime_contract import (
     ContractError,
     SCHEMA,
+    SUPPORTED_RUNTIMES,
     VERSION,
     build_authority,
     cited_adrs,
@@ -108,6 +109,10 @@ def adapter_payload(adapter: str, profile_path: str) -> dict:
             "prewrite_prevention_status": "workspace-only; task scope is postflight-detected",
         },
         "kimi": {
+            "prewrite": "permission mode or runtime hook when available",
+            "supports_prewrite_prevention": False,
+        },
+        "omp": {
             "prewrite": "permission mode or runtime hook when available",
             "supports_prewrite_prevention": False,
         },
@@ -219,9 +224,9 @@ def main() -> int:
                 }
             )
 
-        adapters = args.adapter or ["generic", "claude", "codex", "kimi"]
+        adapters = args.adapter or ["generic"] + sorted(SUPPORTED_RUNTIMES)
         adapters = list(dict.fromkeys(adapters))
-        invalid = sorted(set(adapters) - {"generic", "claude", "codex", "kimi"})
+        invalid = sorted(set(adapters) - ({"generic"} | SUPPORTED_RUNTIMES))
         if invalid:
             raise ContractError(f"unsupported adapter(s): {', '.join(invalid)}")
 

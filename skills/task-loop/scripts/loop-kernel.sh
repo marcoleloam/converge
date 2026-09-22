@@ -40,12 +40,12 @@
 #
 # Usage:
 #   bash loop-kernel.sh --issue <id|slug|path> [--tasks-dir DIR]
-#        [--agent claude|codex|kimi] [--no-agent]
+#        [--agent claude|codex|kimi|omp] [--no-agent]
 #        [--max-iterations N] [--max-seconds N] [--max-tokens N]
 #        [--allow-external-writes] [--dry-run] [--resume]
 #        [--base BRANCH] [--contract PATH] [--legacy-no-contract]
 #        [--isolation worktree|inplace]   (worktree is the DEFAULT)
-#        [--verify] [--judge codex|kimi|claude|gemini]
+#        [--verify] [--require-independent] [--judge codex|kimi|claude|gemini]
 #
 # The last three are not the loop's own controls — they belong to the eval runner
 # and the settler, and are forwarded verbatim so the kernel can sit in front of
@@ -72,6 +72,9 @@ TRACKER_BRIDGE="${CVG_TRACKER_BRIDGE:-$SCRIPT_DIR/loop-tracker.sh}"
 # deterministic verdict without calling a real judge, and without editing the
 # shipped verifier it is testing.
 VERIFIER="${CVG_VERIFIER:-$SCRIPT_DIR/../../task-to-runtime-contract/scripts/verify-work.py}"
+# Durable resume: exclusive lock + strict state.env parser. Never `source` a
+# checkpoint — it is an untrusted KEY=VALUE file, not a shell script.
+CKPT="$SCRIPT_DIR/loop-checkpoint.py"
 
 err() { printf 'ERROR: %s\n' "$*" >&2; }
 
@@ -91,7 +94,7 @@ KEEP_WORKTREE_FLAG=false
 ESTIMATE=false
 # Tier-2 is ON by default. An adversarial verifier you have to remember to run
 # is one nobody runs on the unattended path.
-JUDGE=""; VERIFY=false
+JUDGE=""; VERIFY=false; REQUIRE_INDEPENDENT=false
 # Whether the OPERATOR spoke about tier 2. Without this the lane's default and an
 # explicit --no-verify are indistinguishable, and a FULL profile would silently
 # re-enable a check the operator just switched off.
@@ -133,6 +136,7 @@ while [ $# -gt 0 ]; do
     --judge)          [ $# -ge 2 ] || { err "--judge requires a value"; exit 2; }; JUDGE="$2"; VERIFY=true; VERIFY_EXPLICIT=true; shift 2 ;;
     --judge=*)        JUDGE="${1#--judge=}"; VERIFY=true; VERIFY_EXPLICIT=true; shift ;;
     --verify)         VERIFY=true; VERIFY_EXPLICIT=true; shift ;;
+    --require-independent) REQUIRE_INDEPENDENT=true; VERIFY=true; VERIFY_EXPLICIT=true; shift ;;
     --no-verify)      VERIFY=false; VERIFY_EXPLICIT=true; shift ;;
     --lane)           [ $# -ge 2 ] || { err "--lane requires FAST|NORMAL|FULL"; exit 2; }; LANE="$2"; shift 2 ;;
     --lane=*)         LANE="${1#--lane=}"; shift ;;
@@ -147,6 +151,10 @@ while [ $# -gt 0 ]; do
     *)                err "unknown argument '$1'"; exit 2 ;;
   esac
 done
+if [ "$REQUIRE_INDEPENDENT" = true ] && [ "$VERIFY" != true ]; then
+  err "--require-independent cannot be combined with --no-verify"
+  printf 'TASK_LOOP=USAGE_ERROR\n'; exit 2
+fi
 
 [ -n "$ISSUE" ] || { err "--issue is required. This loop never picks its own task."; printf 'TASK_LOOP=USAGE_ERROR\n'; exit 2; }
 [ -f "$EVAL_RUNNER" ] || { err "eval runner missing: $EVAL_RUNNER"; printf 'TASK_LOOP=ERROR\n'; exit 4; }
@@ -222,7 +230,7 @@ print(str(value).strip().lower())
 ' "$ROUTING_CONTRACT" 2>/dev/null || true)"
   case "$PROFILE_RUNTIME" in
     generic|"") : ;;
-    claude|codex|kimi)
+    claude|codex|kimi|omp)
       if [ "$AGENT_EXPLICIT" = true ] && [ "$AGENT" != "$PROFILE_RUNTIME" ]; then
         err "execution profile is bound to '$PROFILE_RUNTIME', but --agent requested '$AGENT' — re-bind for that runtime or use --agent $PROFILE_RUNTIME"
         printf 'TASK_LOOP=USAGE_ERROR\n'
@@ -231,7 +239,7 @@ print(str(value).strip().lower())
       AGENT="$PROFILE_RUNTIME"
       ;;
     *)
-      err "execution profile names unsupported primary_runtime '$PROFILE_RUNTIME' — re-bind with generic|claude|codex|kimi"
+      err "execution profile names unsupported primary_runtime '$PROFILE_RUNTIME' — re-bind with generic|claude|codex|kimi|omp"
       printf 'TASK_LOOP=ERROR\n'
       exit 4
       ;;
@@ -336,27 +344,40 @@ LOOP_BASE_BRANCH="$(git -C "$GIT_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null |
 [ "$LOOP_BASE_BRANCH" = "HEAD" ] && LOOP_BASE_BRANCH=""   # detached: no branch to name
 
 ORIGINAL_WORKSPACE="$WORKSPACE_ROOT"
+# Durable loop identity lives in the ORIGINAL checkout, never inside a
+# disposable worktree. --resume used to cut a fresh tree first, then look for
+# state.env there — so ITER/elapsed/tokens reset and the previous attempt's
+# worktree was orphaned. The checkpoint is the bridge back.
+LOOP_DIR="$ORIGINAL_WORKSPACE/cvg/loop/$TASK_ID"
+STATE_FILE="$LOOP_DIR/state.env"
+ATTEMPTS_DIR="$LOOP_DIR/attempts"
+HANDOFF="$LOOP_DIR/HANDOFF.md"
+STOP_FILE="$LOOP_DIR/STOP"
+LOCK_FILE="$LOOP_DIR/lock"
+TIER2_LOG="$LOOP_DIR/tier2.log"
 WORKTREE_DIR=""
-if [ "$ISOLATION" = "worktree" ]; then
-  if ! git -C "$GIT_ROOT" rev-parse --git-dir >/dev/null 2>&1; then
-    err "--isolation worktree needs a git repository"; printf 'TASK_LOOP=ERROR\n'; exit 4
-  fi
-  WORKTREE_DIR="$(mktemp -d -t "cvg-wt-$TASK_ID.XXXXXX")"
-  rm -rf "$WORKTREE_DIR"
-  WT_BRANCH="loop/$TASK_ID-$$"
-  if ! git -C "$GIT_ROOT" worktree add --quiet -b "$WT_BRANCH" "$WORKTREE_DIR" >/dev/null 2>&1; then
-    err "could not create a worktree at $WORKTREE_DIR"; printf 'TASK_LOOP=ERROR\n'; exit 4
-  fi
-  # Re-point every workspace-relative path at the isolated checkout.
-  #
-  # Prefix-stripping is NOT safe here: on macOS `git rev-parse --show-toplevel`
-  # returns the PHYSICAL path (/private/var/...) while $PWD is the symlinked one
-  # (/var/...), so `${path#$prefix}` silently fails to match and the "relative"
-  # remainder is still absolute — which then gets appended to the worktree and
-  # produces /worktree/private/var/... Compute the relation exactly instead.
-  rel_to() {  # rel_to <path> <base> — realpath-based, so symlinks cannot lie
-    python3 -c 'import os,sys; print(os.path.relpath(os.path.realpath(sys.argv[1]), os.path.realpath(sys.argv[2])))' "$1" "$2"
-  }
+WT_BRANCH=""
+ATTEMPT_HANDOFF=""
+HANDOFF_DIGEST=""; CHECKPOINT_AT=0
+LOCK_HOLDER=""
+PHASE=""
+TIER2_VERDICT=""
+ATTEMPT_STATUS="idle"
+ATTEMPT_PID=0
+KERNEL_PID="$$"
+TERMINAL=""
+SPEC_DIGEST=""
+CKPT_TASK_ID=""
+PENDING_SETTLE=false
+RESUME_REPAIR=false
+KEEP_WORKTREE=false
+CLEANUP_REASON=""
+
+rel_to() {  # rel_to <path> <base> — realpath-based, so symlinks cannot lie
+  python3 -c 'import os,sys; print(os.path.relpath(os.path.realpath(sys.argv[1]), os.path.realpath(sys.argv[2])))' "$1" "$2"
+}
+
+remap_to_worktree() {
   _rel_ws="$(rel_to "$ORIGINAL_WORKSPACE" "$GIT_ROOT")"
   _rel_tasks="$(rel_to "$RESOLVED_TASKS_DIR" "$ORIGINAL_WORKSPACE")"
   _rel_spec="$(rel_to "$TASK_FILE" "$ORIGINAL_WORKSPACE")"
@@ -367,21 +388,8 @@ if [ "$ISOLATION" = "worktree" ]; then
     err "the spec is not present in the worktree ($TASK_FILE) — commit it before using --isolation worktree"
     printf 'TASK_LOOP=ERROR\n'; exit 4
   }
-  printf 'isolation: worktree %s (branch %s)\n' "$WORKTREE_DIR" "$WT_BRANCH"
-  # A worktree is a checkout of COMMITTED state. Uncommitted work in the main
-  # tree is invisible to it — correct git semantics, and a genuinely confusing
-  # way to start green if nobody says so out loud.
-  _dirty="$(git -C "$GIT_ROOT" status --porcelain 2>/dev/null | wc -l | tr -d ' ')"
-  if [ "${_dirty:-0}" -gt 0 ]; then
-    printf 'NOTE: %s uncommitted change(s) in the main tree are NOT visible to the\n' "$_dirty"
-    printf '      worktree — it checks out committed state. Commit them first, or\n'
-    printf '      pass --isolation inplace to run against what you can see.\n'
-  fi
-fi
+}
 
-# Task-Spec's configured roots must follow the dispatch workspace too. Keeping
-# the original checkout's absolute backlog here would let an isolated attempt
-# append metrics or acceptance state outside its own worktree.
 # 3.9 rebuild-state keeps path: repo-relative only when these match the
 # physical Git toplevel. /tmp on macOS is a symlink of /private/tmp.
 physical_dir() {
@@ -401,37 +409,8 @@ export TASKSPEC_BACKLOG_DIR="$(physical_dir "$RESOLVED_TASKS_DIR")"
 export TASKSPEC_WORKSPACE_ROOT="$(physical_dir "$WORKSPACE_ROOT")"
 export TASKSPEC_ACCEPTANCE_DIR="$(physical_dir "$(dirname "$RESOLVED_TASKS_DIR")/.taskspec/acceptance")"
 
-# TaskHandoff/v3 is an ATTEMPT contract, not a bind-time project artifact. Mint
-# it only after the final workspace and immutable base exist. This is what keeps
-# worktree dispatch honest: a handoff issued in the original checkout names the
-# wrong workspace and cannot be accepted in the isolated one.
-ATTEMPT_HANDOFF=""
-if [ "$LEGACY_NO_CONTRACT" != true ] && [ "$DRY_RUN" != true ]; then
-  TASKSPEC_ENGINE="${CVG_TASKSPEC_BIN:-${TASKSPEC_BIN:-taskspec}}"
-  ATTEMPT_HANDOFF="$WORKSPACE_ROOT/cvg/execution/$TASK_ID/task-handoff.json"
-  _handoff_backend="$(grep -m1 '^execution_backend:' "$TASK_FILE" 2>/dev/null | awk '{print $2}')"
-  : "${_handoff_backend:=any}"
-  mkdir -p "$(dirname "$ATTEMPT_HANDOFF")"
-  HANDOFF_OUT="$(
-    cd "$WORKSPACE_ROOT" &&
-      "$TASKSPEC_ENGINE" handoff "$TASK_FILE" --backend "$_handoff_backend" \
-        --out "$ATTEMPT_HANDOFF" --force 2>&1
-  )"
-  HANDOFF_RC=$?
-  printf '%s\n' "$HANDOFF_OUT"
-  if [ "$HANDOFF_RC" -ne 0 ] || ! printf '%s\n' "$HANDOFF_OUT" | grep -q '^HANDOFF=WRITTEN '; then
-    err "Task-Spec could not issue the dispatch handoff in the final workspace"
-    printf 'TASK_LOOP=ERROR\n'
-    exit 4
-  fi
-fi
-
-# Discard the isolated checkout unless the run earned a keep. Registered on EXIT
-# so a crash cannot leave orphaned worktrees accumulating on disk.
-KEEP_WORKTREE=false
-# Set by land() so the trap — which is called with no arguments — can tell a
-# settled removal from an ordinary one.
-CLEANUP_REASON=""
+# Worktree/handoff/lock are created AFTER --dry-run/--estimate exit, and AFTER
+# --resume reads the checkpoint. Trap is registered at that same point.
 cleanup_worktree() {
   [ -n "$WORKTREE_DIR" ] || return 0
   if [ "$KEEP_WORKTREE" = true ]; then
@@ -442,19 +421,26 @@ cleanup_worktree() {
   fi
   git -C "$GIT_ROOT" worktree remove --force "$WORKTREE_DIR" >/dev/null 2>&1 || rm -rf "$WORKTREE_DIR"
   git -C "$GIT_ROOT" branch -D "$WT_BRANCH" >/dev/null 2>&1 || true
-  # A worktree removed by hand, or one whose $TMPDIR was reaped by the OS, leaves a
-  # registration behind that `git worktree list` keeps reporting forever. Prune so
-  # the repo's own account of itself stays true.
   git -C "$GIT_ROOT" worktree prune >/dev/null 2>&1 || true
-  # Say it out loud on the settled path only. A silent removal after a run that
-  # printed a $TMPDIR path throughout reads as "where did my work go" — and the
-  # answer (a branch, plus the receipt that names it) is worth one line.
   if [ "$CLEANUP_REASON" = settled ]; then
     printf 'worktree removed — the work is committed on the task branch named in the receipt.\n'
   fi
   return 0
 }
-trap cleanup_worktree EXIT
+
+release_lock() {
+  if [ -n "${LOCK_HOLDER:-}" ]; then
+    kill "$LOCK_HOLDER" 2>/dev/null || true
+    wait "$LOCK_HOLDER" 2>/dev/null || true
+    LOCK_HOLDER=""
+  fi
+  return 0
+}
+
+cleanup_loop() {
+  cleanup_worktree
+  release_lock
+}
 
 # --------------------------------------------------------------------------
 # Is the loop authorized to WRITE to the tracker?
@@ -536,14 +522,13 @@ tracker() {
 # --------------------------------------------------------------------------
 # Durable state — the loop's position must survive a crash, or a restart
 # silently restarts the work and double-applies its side effects.
+#
+# Never `source` state.env: it is untrusted KEY=VALUE, parsed by
+# loop-checkpoint.py. Writes are same-directory atomic replace. Elapsed,
+# tokens and ITER are monotonic — a resume cannot shrink the spend.
+# mkdir/lock/load happen after --dry-run/--estimate, which must be side-effect
+# free.
 # --------------------------------------------------------------------------
-LOOP_DIR="$WORKSPACE_ROOT/cvg/loop/$TASK_ID"
-STATE_FILE="$LOOP_DIR/state.env"
-ATTEMPTS_DIR="$LOOP_DIR/attempts"
-HANDOFF="$LOOP_DIR/HANDOFF.md"
-STOP_FILE="$LOOP_DIR/STOP"
-mkdir -p "$ATTEMPTS_DIR"
-
 ITER=0; STRIKES=0; TOKENS_USED=0; LAST_FINGERPRINT=""; STARTED_AT=""
 # Wall-clock is ACCUMULATED WORKING TIME, not wall time since the first attempt.
 #
@@ -553,29 +538,82 @@ ITER=0; STRIKES=0; TOKENS_USED=0; LAST_FINGERPRINT=""; STARTED_AT=""
 # attempt — reporting a spent budget on a run that spent nothing. The budget is
 # meant to bound what the loop DOES, so only time inside a session counts.
 ELAPSED_PRIOR=0
-if [ "$RESUME" = true ] && [ -f "$STATE_FILE" ]; then
-  # shellcheck disable=SC1090
-  . "$STATE_FILE"
-  printf 'resuming at iteration %s (strikes %s)\n' "$ITER" "$STRIKES"
-fi
-# SESSION_START is always now and is deliberately NOT restored from state.
 SESSION_START="$(date -u +%s)"
 [ -n "$STARTED_AT" ] || STARTED_AT="$SESSION_START"
-case "$ELAPSED_PRIOR" in ''|*[!0-9]*) ELAPSED_PRIOR=0 ;; esac
 
 elapsed() { echo $(( ELAPSED_PRIOR + $(date -u +%s) - SESSION_START )); }
 
 save_state() {
-  {
-    printf 'ITER=%s\n' "$ITER"
-    printf 'STRIKES=%s\n' "$STRIKES"
-    printf 'TOKENS_USED=%s\n' "$TOKENS_USED"
-    printf 'STARTED_AT=%s\n' "$STARTED_AT"
-    # The running total, so the NEXT session resumes the budget rather than the
-    # clock. Written every checkpoint; the in-memory ELAPSED_PRIOR never moves.
-    printf 'ELAPSED_PRIOR=%s\n' "$(elapsed)"
-    printf 'LAST_FINGERPRINT=%s\n' "$LAST_FINGERPRINT"
-  } > "$STATE_FILE"
+  [ -f "$CKPT" ] || { err "checkpoint helper missing: $CKPT"; printf 'TASK_LOOP=ERROR\n'; exit 4; }
+  python3 "$CKPT" save "$STATE_FILE" \
+    --set "TASK_ID=$TASK_ID" \
+    --set "SPEC_DIGEST=$SPEC_DIGEST" \
+    --set "ITER=$ITER" \
+    --set "STRIKES=$STRIKES" \
+    --set "TOKENS_USED=$TOKENS_USED" \
+    --set "STARTED_AT=$STARTED_AT" \
+    --set "ELAPSED_PRIOR=$(elapsed)" \
+    --set "LAST_FINGERPRINT=$LAST_FINGERPRINT" \
+    --set "LOOP_BASE_COMMIT=$LOOP_BASE_COMMIT" \
+    --set "LOOP_BASE_BRANCH=$LOOP_BASE_BRANCH" \
+    --set "WORKTREE_DIR=$WORKTREE_DIR" \
+    --set "WT_BRANCH=$WT_BRANCH" \
+    --set "ATTEMPT_HANDOFF=$ATTEMPT_HANDOFF" \
+    --set "HANDOFF_DIGEST=$HANDOFF_DIGEST" \
+    --set "CHECKPOINT_AT=$(date -u +%s)" \
+    --set "KERNEL_PID=$KERNEL_PID" \
+    --set "ATTEMPT_PID=${ATTEMPT_PID:-0}" \
+    --set "ATTEMPT_STATUS=$ATTEMPT_STATUS" \
+    --set "PHASE=$PHASE" \
+    --set "TIER2_VERDICT=$TIER2_VERDICT" \
+    --set "TERMINAL=$TERMINAL" \
+    --set "BUDGET_SECONDS=$BUDGET_SECONDS" \
+    >/dev/null || { err "could not write checkpoint $STATE_FILE"; printf 'TASK_LOOP=ERROR\n'; exit 4; }
+}
+
+apply_state_line() {
+  _k="${1%%=*}"
+  _v="${1#*=}"
+  case "$_k" in
+    ITER) ITER="$_v" ;;
+    STRIKES) STRIKES="$_v" ;;
+    TOKENS_USED) TOKENS_USED="$_v" ;;
+    STARTED_AT) STARTED_AT="$_v" ;;
+    ELAPSED_PRIOR) ELAPSED_PRIOR="$_v" ;;
+    LAST_FINGERPRINT) LAST_FINGERPRINT="$_v" ;;
+    TASK_ID) CKPT_TASK_ID="$_v" ;;
+    SPEC_DIGEST) SPEC_DIGEST="$_v" ;;
+    LOOP_BASE_COMMIT) LOOP_BASE_COMMIT="$_v" ;;
+    LOOP_BASE_BRANCH) LOOP_BASE_BRANCH="$_v" ;;
+    WORKTREE_DIR) WORKTREE_DIR="$_v" ;;
+    WT_BRANCH) WT_BRANCH="$_v" ;;
+    ATTEMPT_HANDOFF) ATTEMPT_HANDOFF="$_v" ;;
+    HANDOFF_DIGEST) HANDOFF_DIGEST="$_v" ;;
+    CHECKPOINT_AT) CHECKPOINT_AT="$_v" ;;
+    KERNEL_PID) : ;;
+    ATTEMPT_PID) ATTEMPT_PID="$_v" ;;
+    ATTEMPT_STATUS) ATTEMPT_STATUS="$_v" ;;
+    PHASE) PHASE="$_v" ;;
+    TIER2_VERDICT) TIER2_VERDICT="$_v" ;;
+    TERMINAL) TERMINAL="$_v" ;;
+    BUDGET_SECONDS) : ;;
+  esac
+}
+
+load_state() {
+  _loaded="$(python3 "$CKPT" load "$STATE_FILE")" || return 1
+  while IFS= read -r _line; do
+    [ -n "$_line" ] || continue
+    apply_state_line "$_line"
+  done <<EOF
+$_loaded
+EOF
+  case "$ELAPSED_PRIOR" in ''|*[!0-9]*) ELAPSED_PRIOR=0 ;; esac
+  case "$ITER" in ''|*[!0-9]*) ITER=0 ;; esac
+  case "$STRIKES" in ''|*[!0-9]*) STRIKES=0 ;; esac
+  case "$TOKENS_USED" in ''|*[!0-9]*) TOKENS_USED=0 ;; esac
+  case "$ATTEMPT_PID" in ''|*[!0-9]*) ATTEMPT_PID=0 ;; esac
+  return 0
 }
 
 # --------------------------------------------------------------------------
@@ -584,6 +622,10 @@ save_state() {
 # --------------------------------------------------------------------------
 land() {  # land <STATE> <exit-code> <why>
   _state="$1"; _rc="$2"; _why="${3:-}"
+  TERMINAL="$_state"
+  PHASE=landed
+  ATTEMPT_STATUS=idle
+  ATTEMPT_PID=0
   save_state
   # Before anything else can discard the worktree: carry the evidence home.
   sync_receipt
@@ -618,7 +660,7 @@ land() {  # land <STATE> <exit-code> <why>
   [ -n "$BUDGET_TOKENS" ] && printf ' · tokens %s/%s' "$TOKENS_USED" "$BUDGET_TOKENS"
   printf '\n'
   [ -n "$_why" ] && printf '%s\n' "$_why"
-  [ -f "$HANDOFF" ] && printf 'handoff: %s\n' "${HANDOFF#"$WORKSPACE_ROOT"/}"
+  [ -f "$HANDOFF" ] && printf 'handoff: %s\n' "${HANDOFF#"$ORIGINAL_WORKSPACE"/}"
   write_state_md "$_state" "$_why"
   printf 'TASK_LOOP=%s\n' "$_state"
   # Narrate the outcome to the tracker. Fail-soft: a tracker that is down must
@@ -721,9 +763,6 @@ write_state_md() {
 # --------------------------------------------------------------------------
 # The verification step — the task's own Exit Check. Level 1: an exit code.
 # --------------------------------------------------------------------------
-VERIFY_ARGS=(--issue "$TASK_FILE" --tasks-dir "$RESOLVED_TASKS_DIR")
-[ -n "$CONTRACT" ] && VERIFY_ARGS+=(--contract "$CONTRACT")
-[ "$LEGACY_NO_CONTRACT" = true ] && VERIFY_ARGS+=(--legacy-no-contract)
 
 verify() {  # -> 0 GREEN, 1 RED, 2 unresolvable; output on stdout
   bash "$EVAL_RUNNER" "${VERIFY_ARGS[@]}" 2>&1
@@ -823,8 +862,186 @@ if [ "$DRY_RUN" = true ]; then
   printf 'DRY-RUN: would loop up to %s attempts with %s, verifying after each.\n' "$BUDGET_ITER" "$AGENT"
   printf 'DRY_RUN=OK\n'; exit 0
 fi
+# --------------------------------------------------------------------------
+# Dispatch workspace — AFTER estimate/dry-run, AFTER the checkpoint is readable.
+# A fresh worktree or --force handoff here is what made --resume restart.
+# --------------------------------------------------------------------------
+[ -f "$CKPT" ] || { err "checkpoint helper missing: $CKPT"; printf 'TASK_LOOP=ERROR\n'; exit 4; }
+mkdir -p "$ATTEMPTS_DIR"
+trap cleanup_loop EXIT
+
+_lock_log="$(mktemp -t cvg-loop-lock.XXXXXX)"
+python3 "$CKPT" hold-lock --lock "$LOCK_FILE" --pid "$$" >"$_lock_log" 2>&1 &
+LOCK_HOLDER=$!
+_lock_i=0
+_lock_got=false
+while [ "$_lock_i" -lt 50 ]; do
+  if grep -q '^LOCK=HELD$' "$_lock_log" 2>/dev/null; then _lock_got=true; break; fi
+  if grep -q '^LOCK=BUSY' "$_lock_log" 2>/dev/null; then
+    _holder="$(grep '^LOCK=BUSY' "$_lock_log" | sed -n 's/.*holder=//p' | head -1)"
+    err "another loop is already running for $TASK_ID${_holder:+ (pid $_holder)}"
+    printf 'TASK_LOOP=ERROR\n'
+    exit 4
+  fi
+  if ! kill -0 "$LOCK_HOLDER" 2>/dev/null; then
+    err "could not acquire loop lock for $TASK_ID"
+    printf 'TASK_LOOP=ERROR\n'
+    exit 4
+  fi
+  sleep 0.1
+  _lock_i=$((_lock_i + 1))
+done
+rm -f "$_lock_log"
+if [ "$_lock_got" != true ]; then
+  err "timed out acquiring loop lock for $TASK_ID"
+  printf 'TASK_LOOP=ERROR\n'
+  exit 4
+fi
+
+SPEC_DIGEST="$(python3 "$CKPT" digest "$TASK_FILE")" || {
+  err "could not digest spec $TASK_FILE"; printf 'TASK_LOOP=ERROR\n'; exit 4
+}
+
+if [ "$RESUME" != true ] && [ -f "$STATE_FILE" ]; then
+  err "a checkpoint already exists — use --resume; never restart its budget"
+  printf 'TASK_LOOP=ERROR\n'; exit 4
+fi
+
+if [ "$RESUME" = true ]; then
+  [ -f "$STATE_FILE" ] || {
+    err "--resume found no checkpoint for $TASK_ID"
+    printf 'TASK_LOOP=ERROR\n'; exit 4
+  }
+  load_state || { err "checkpoint for $TASK_ID is malformed"; printf 'TASK_LOOP=ERROR\n'; exit 4; }
+  [ -n "$STARTED_AT" ] || STARTED_AT="$SESSION_START"
+  if [ -n "$CKPT_TASK_ID" ] && [ "$CKPT_TASK_ID" != "$TASK_ID" ]; then
+    err "checkpoint is bound to $CKPT_TASK_ID, this run is $TASK_ID — no cross-task resume"
+    printf 'TASK_LOOP=ERROR\n'; exit 4
+  fi
+  _now_digest="$(python3 "$CKPT" digest "$TASK_FILE")"
+  if [ -z "$SPEC_DIGEST" ] || [ "$SPEC_DIGEST" != "$_now_digest" ]; then
+    err "spec revision changed since the checkpoint (refusing --resume)"
+    printf 'TASK_LOOP=ERROR\n'; exit 4
+  fi
+  SPEC_DIGEST="$_now_digest"
+  if [ -n "$BASE" ] && [ -n "$LOOP_BASE_COMMIT" ]; then
+    _base_res="$(git -C "$GIT_ROOT" rev-parse "$BASE" 2>/dev/null || echo "")"
+    if [ -n "$_base_res" ] && [ "$_base_res" != "$LOOP_BASE_COMMIT" ]; then
+      err "resume --base does not match the checkpoint base $LOOP_BASE_COMMIT"
+      printf 'TASK_LOOP=ERROR\n'; exit 4
+    fi
+  fi
+  if [ "${ATTEMPT_PID:-0}" -gt 0 ] 2>/dev/null && python3 "$CKPT" pid-alive "$ATTEMPT_PID"; then
+    err "attempt $ITER is still running (pid $ATTEMPT_PID) — not redispatching"
+    printf 'TASK_LOOP=ERROR\n'; exit 4
+  fi
+  if [ "$ATTEMPT_STATUS" = running ]; then
+    # A hard interruption has no reliable stop timestamp. Charge the observed
+    # interval, bounded by that attempt's timeout; never treat it as zero.
+    _interrupted_seconds=$(( $(date -u +%s) - CHECKPOINT_AT ))
+    [ "$_interrupted_seconds" -ge 0 ] || _interrupted_seconds=0
+    _attempt_cap="${ATTEMPT_SECONDS:-$BUDGET_SECONDS}"
+    [ "$_interrupted_seconds" -le "$_attempt_cap" ] || _interrupted_seconds="$_attempt_cap"
+    ELAPSED_PRIOR=$(( ELAPSED_PRIOR + _interrupted_seconds ))
+    ATTEMPT_STATUS=idle
+    ATTEMPT_PID=0
+  fi
+  printf 'resuming at iteration %s (strikes %s, elapsed %ss)\n' "$ITER" "$STRIKES" "$ELAPSED_PRIOR"
+  case "$TERMINAL" in
+    SETTLED|LOCAL_SETTLED|NO_OP)
+      land "$TERMINAL" 0 "already landed $TERMINAL — resume will not re-dispatch" ;;
+    CANCELLED)
+      land CANCELLED 3 "already cancelled — resume will not re-dispatch" ;;
+  esac
+  TERMINAL=""
+  if [ "$TIER2_VERDICT" = REFUTED ]; then
+    RESUME_REPAIR=true
+    printf 'resume: prior tier-2 REFUTED — next attempt must repair against those findings\n'
+  fi
+fi
+
+if [ -n "$WORKTREE_DIR" ]; then
+  if ! python3 "$CKPT" has-worktree --path "$WORKTREE_DIR" --git-root "$GIT_ROOT" >/dev/null; then
+    err "resume worktree is gone: $WORKTREE_DIR — refusing to cut a replacement"
+    printf 'TASK_LOOP=ERROR\n'; exit 4
+  fi
+  remap_to_worktree
+  KEEP_WORKTREE=true
+  printf 'isolation: worktree %s (branch %s) (resumed)\n' "$WORKTREE_DIR" "$WT_BRANCH"
+elif [ "$RESUME" = true ]; then
+  printf 'isolation: inplace (resumed)\n'
+elif [ "$ISOLATION" = "worktree" ]; then
+  if ! git -C "$GIT_ROOT" rev-parse --git-dir >/dev/null 2>&1; then
+    err "--isolation worktree needs a git repository"; printf 'TASK_LOOP=ERROR\n'; exit 4
+  fi
+  WORKTREE_DIR="$(mktemp -d -t "cvg-wt-$TASK_ID.XXXXXX")"
+  rm -rf "$WORKTREE_DIR"
+  WT_BRANCH="loop/$TASK_ID-$$"
+  if ! git -C "$GIT_ROOT" worktree add --quiet -b "$WT_BRANCH" "$WORKTREE_DIR" >/dev/null 2>&1; then
+    err "could not create a worktree at $WORKTREE_DIR"; printf 'TASK_LOOP=ERROR\n'; exit 4
+  fi
+  remap_to_worktree
+  printf 'isolation: worktree %s (branch %s)\n' "$WORKTREE_DIR" "$WT_BRANCH"
+  _dirty="$(git -C "$GIT_ROOT" status --porcelain 2>/dev/null | wc -l | tr -d ' ')"
+  if [ "${_dirty:-0}" -gt 0 ]; then
+    printf 'NOTE: %s uncommitted change(s) in the main tree are NOT visible to the\n' "$_dirty"
+    printf '      worktree — it checks out committed state. Commit them first, or\n'
+    printf '      pass --isolation inplace to run against what you can see.\n'
+  fi
+fi
+
+export TASKSPEC_BACKLOG_DIR="$(physical_dir "$RESOLVED_TASKS_DIR")"
+export TASKSPEC_WORKSPACE_ROOT="$(physical_dir "$WORKSPACE_ROOT")"
+export TASKSPEC_ACCEPTANCE_DIR="$(physical_dir "$(dirname "$RESOLVED_TASKS_DIR")/.taskspec/acceptance")"
+
+if [ "$LEGACY_NO_CONTRACT" != true ]; then
+  TASKSPEC_ENGINE="${CVG_TASKSPEC_BIN:-${TASKSPEC_BIN:-taskspec}}"
+  if [ "$RESUME" = true ] && [ -n "$ATTEMPT_HANDOFF" ] && [ -f "$ATTEMPT_HANDOFF" ]; then
+    if [ -z "$HANDOFF_DIGEST" ] || [ "$(python3 "$CKPT" digest "$ATTEMPT_HANDOFF")" != "$HANDOFF_DIGEST" ]; then
+      err "attempt handoff changed since the checkpoint — refusing a replacement attempt"
+      printf 'TASK_LOOP=ERROR\n'; exit 4
+    fi
+    BIND_OUT="$(python3 "$CKPT" check-bind --handoff "$ATTEMPT_HANDOFF" --task-id "$TASK_ID" --spec "$TASK_FILE" --base "$LOOP_BASE_COMMIT" 2>&1)"
+    BIND_RC=$?
+    printf '%s\n' "$BIND_OUT"
+    if [ "$BIND_RC" -ne 0 ]; then
+      err "resume handoff is not bound to this task/revision/base"
+      printf 'TASK_LOOP=ERROR\n'; exit 4
+    fi
+    printf 'handoff: reused %s (no --force)\n' "$ATTEMPT_HANDOFF"
+  elif [ "$RESUME" = true ]; then
+    err "resume requires the existing attempt handoff — refusing to mint a new one"
+    printf 'TASK_LOOP=ERROR\n'; exit 4
+  else
+    ATTEMPT_HANDOFF="$WORKSPACE_ROOT/cvg/execution/$TASK_ID/task-handoff.json"
+    _handoff_backend="$(grep -m1 '^execution_backend:' "$TASK_FILE" 2>/dev/null | awk '{print $2}')"
+    : "${_handoff_backend:=any}"
+    mkdir -p "$(dirname "$ATTEMPT_HANDOFF")"
+    HANDOFF_OUT="$(
+      cd "$WORKSPACE_ROOT" &&
+        "$TASKSPEC_ENGINE" handoff "$TASK_FILE" --backend "$_handoff_backend" \
+          --out "$ATTEMPT_HANDOFF" --force 2>&1
+    )"
+    HANDOFF_RC=$?
+    printf '%s\n' "$HANDOFF_OUT"
+    if [ "$HANDOFF_RC" -ne 0 ] || ! printf '%s\n' "$HANDOFF_OUT" | grep -q '^HANDOFF=WRITTEN '; then
+      err "Task-Spec could not issue the dispatch handoff in the final workspace"
+      printf 'TASK_LOOP=ERROR\n'
+      exit 4
+    fi
+    HANDOFF_DIGEST="$(python3 "$CKPT" digest "$ATTEMPT_HANDOFF")"
+  fi
+fi
+VERIFY_ARGS=(--issue "$TASK_FILE" --tasks-dir "$RESOLVED_TASKS_DIR")
+[ -n "$CONTRACT" ] && VERIFY_ARGS+=(--contract "$CONTRACT")
+[ "$LEGACY_NO_CONTRACT" = true ] && VERIFY_ARGS+=(--legacy-no-contract)
+
+save_state
 
 # An already-green task is a clean no-op, not a success we manufactured.
+# --resume with a checkpoint must NOT take that shortcut: a green eval after an
+# interrupted run may still owe tier-2 and settlement, and a prior REFUTED
+# green must repair against the findings rather than land NO_OP unchanged.
 PRE_OUT="$(verify)"; PRE_RC=$?
 if [ "$PRE_RC" -eq 2 ]; then
   printf '%s\n' "$PRE_OUT"
@@ -832,10 +1049,23 @@ if [ "$PRE_RC" -eq 2 ]; then
 fi
 if [ "$PRE_RC" -eq 0 ]; then
   printf '%s\n' "$PRE_OUT" | tail -4
-  land NO_OP 0 "already green on arrival — nothing to do"
+  if [ "$RESUME" = true ]; then
+    if [ "$RESUME_REPAIR" = true ]; then
+      printf 'resume: eval is GREEN but tier-2 REFUTED — dispatching a repair attempt\n'
+    else
+      printf 'resume: eval is GREEN — continuing pending verification/settlement (not NO_OP)\n'
+      PENDING_SETTLE=true
+    fi
+  else
+    land NO_OP 0 "already green on arrival — nothing to do"
+  fi
 fi
-LAST_FINGERPRINT="$(fingerprint "$PRE_OUT")"
-printf 'preflight: RED (expected — the work is not built yet)\n'
+if [ "$PRE_RC" -ne 0 ]; then
+  if [ "$RESUME" != true ] || [ -z "$LAST_FINGERPRINT" ]; then
+    LAST_FINGERPRINT="$(fingerprint "$PRE_OUT")"
+  fi
+  printf 'preflight: RED (expected — the work is not built yet)\n'
+fi
 
 # The terrain pack for this task's swimlane, if Bind assembled one. Resolved from
 # the spec's `parent:` the same way context-pack.py does, so the two cannot
@@ -862,6 +1092,7 @@ tracker --phase claim --agent "$AGENT"
 # --------------------------------------------------------------------------
 # The loop
 # --------------------------------------------------------------------------
+if [ "$PENDING_SETTLE" != true ]; then
 ENGINE="$ENGINES_DIR/$AGENT.sh"
 if [ "$NO_AGENT" != true ]; then
   [ -f "$ENGINE" ] || land ERROR 4 "no engine adapter for '$AGENT' (looked in ${ENGINES_DIR#"$WORKSPACE_ROOT"/})"
@@ -926,6 +1157,13 @@ while :; do
       printf '%s\n' "$PRE_OUT" | tail -30
     fi
     printf '```\n'
+    if [ "$TIER2_VERDICT" = REFUTED ] && [ -f "$TIER2_LOG" ]; then
+      printf '\n## Independent verifier REFUTED the previous green eval\n\n'
+      printf 'The Exit Check is green. That is not enough. Repair the work against\n'
+      printf 'these findings. Do not claim done and do not leave the diff unchanged.\n\n```\n'
+      tail -40 "$TIER2_LOG"
+      printf '```\n'
+    fi
     if [ "$ITER" -gt 1 ] && [ -f "$ATTEMPTS_DIR/$(printf '%03d' $((ITER - 1))).log" ]; then
       printf '\n## What the previous attempt did (do not repeat it)\n\n```\n'
       tail -25 "$ATTEMPTS_DIR/$(printf '%03d' $((ITER - 1))).log"
@@ -937,6 +1175,8 @@ while :; do
   # minutes; if the process is killed during one, a checkpoint written only on
   # the way out means --resume has nothing to resume from and the whole attempt
   # is silently redone. The checkpoint must already exist when the loop pauses.
+  PHASE=attempt
+  ATTEMPT_STATUS=running
   save_state
 
   tracker --phase attempt --agent "$AGENT" --iteration "$ITER" --of "$BUDGET_ITER"
@@ -956,8 +1196,14 @@ while :; do
   [ -n "$_eng_model" ]  && ENGINE_ARGS+=(--model "$_eng_model")
   [ -n "$_eng_effort" ] && ENGINE_ARGS+=(--effort "$_eng_effort")
   [ -n "$ATTEMPT_SECONDS" ] && ENGINE_ARGS+=(--timeout "$ATTEMPT_SECONDS")
-  ENGINE_OUT="$(cd "$WORKSPACE_ROOT" && bash "$ENGINE" "${ENGINE_ARGS[@]}" 2>&1)" || ENGINE_RC=$?
-  printf '%s\n' "$ENGINE_OUT" > "$LOG"
+  ( cd "$WORKSPACE_ROOT" && bash "$ENGINE" "${ENGINE_ARGS[@]}" ) >"$LOG" 2>&1 &
+  ATTEMPT_PID=$!
+  save_state
+  wait "$ATTEMPT_PID"
+  ENGINE_RC=$?
+  ATTEMPT_PID=0
+  ATTEMPT_STATUS=idle
+  ENGINE_OUT="$(cat "$LOG" 2>/dev/null || true)"
 
   # Engines report what they spent when they can; absence is not zero, it is
   # unknown, so an absent count must never look like a fresh budget.
@@ -999,6 +1245,10 @@ while :; do
     land STALLED 1 "stagnation detector fired: more iterations will not help. This is usually an upstream gap, not a coding failure."
   fi
 done
+fi
+
+# Honour an external stop even when resume skipped the attempt loop.
+[ -f "$STOP_FILE" ] && { rm -f "$STOP_FILE"; land CANCELLED 3 "an external stop signal arrived"; }
 
 # The reference every downstream comparison is made against. An explicit --base
 # wins; otherwise it is the commit this run forked from, which is exact rather
@@ -1021,10 +1271,19 @@ SETTLE_BASE="$BASE"
 # independent opinion is UNAVAILABLE, which verify-work.py itself permits only
 # for low blast radius.
 # --------------------------------------------------------------------------
+PHASE=tier2
+save_state
 if [ "$VERIFY" != true ]; then
   printf '\n── tier 2 ── not requested: settling on the sealed eval alone (--verify to enable)\n'
+  TIER2_VERDICT=NONE
+  PHASE=settle
+  save_state
 elif [ ! -f "$VERIFIER" ]; then
+  [ "$REQUIRE_INDEPENDENT" != true ] || land BLOCKED 1 "independent verification is required but its verifier is unavailable"
   printf '\n── tier 2 ── verifier not found at %s — skipping\n' "$VERIFIER"
+  TIER2_VERDICT=NONE
+  PHASE=settle
+  save_state
 else
   printf '\n── tier 2 · adversarial verification ──\n'
   VERIFY_CMD=(--task "$TASK_FILE" --repo "$WORKSPACE_ROOT")
@@ -1036,13 +1295,26 @@ else
     *)    V_OUT="$(cd "$WORKSPACE_ROOT" && bash "$VERIFIER" "${VERIFY_CMD[@]}" 2>&1)" || V_RC=$? ;;
   esac
   printf '%s\n' "$V_OUT"
+  mkdir -p "$LOOP_DIR"
+  printf '%s\n' "$V_OUT" > "$TIER2_LOG"
   case "$V_OUT" in
-    *CHECK_VERIFY=UPHELD*)      : ;;
-    *CHECK_VERIFY=UNAVAILABLE*) : ;;
+    *CHECK_VERIFY=UPHELD*)
+      TIER2_VERDICT=UPHELD
+      PHASE=settle
+      save_state
+      ;;
+    *CHECK_VERIFY=UNAVAILABLE*)
+      TIER2_VERDICT=UNAVAILABLE
+      PHASE=settle
+      save_state
+      [ "$REQUIRE_INDEPENDENT" != true ] || land BLOCKED 1 "independent verification is required; UNAVAILABLE is not acceptance"
+      ;;
     *CHECK_VERIFY=REFUTED*)
+      TIER2_VERDICT=REFUTED
       write_handoff "tier-2 refuted the work — the eval is green but the diff does not satisfy the intent"
       land BLOCKED 1 "tier-2 REFUTED: a green eval is necessary, not sufficient. Read the findings above." ;;
     *)
+      TIER2_VERDICT=NONE
       write_handoff "tier-2 verification could not produce a verdict"
       land BLOCKED 1 "tier-2 returned no usable verdict (rc=$V_RC) — a verdict that cannot be obtained is never a pass." ;;
   esac

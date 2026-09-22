@@ -7,7 +7,47 @@ Every form accepts `--json` and `--dry-run` in any position. `--json` emits one
 `ConvergeCLIResult/v1` document and preserves the command exit code. `--dry-run`
 prevents mutations; read-only commands still execute.
 
-Declared public forms: **60**.
+Declared public forms: **71**.
+
+## `deliver start`
+
+Prepare one isolated demand from its own intent using the existing engine and Seamwise. Present the concrete topology, scopes, evals and limits for initial owner alignment; never reuse another backlog.
+
+- Mutates: **yes**
+- Converge pass: `None`
+- Delegates to: `demand-local composition preparation`
+- Tokens: `DELIVERY=ALIGNMENT_REQUIRED|BLOCKED|EXHAUSTED|INTERRUPTED|BUSY|USAGE_ERROR`
+- Example: `cvg deliver start --demand health --intent intent.md`
+
+## `deliver authorize`
+
+Explicit owner approval of the exact prepared alignment packet. Native products review and authorize leaves; Converge conducts dependency-ready tasks through independent acceptance and integrated proof. No publication or business acceptance.
+
+- Mutates: **yes**
+- Converge pass: `None`
+- Delegates to: `compose review/preview/materialize, Task-Spec gate, bind, loop`
+- Tokens: `DELIVERY=READY_FOR_ACCEPTANCE|ALIGNMENT_REQUIRED|BLOCKED|EXHAUSTED|INTERRUPTED|BUSY|USAGE_ERROR`
+- Example: `cvg deliver authorize --demand health --reviewer owner --alignment-digest SHA256`
+
+## `deliver resume`
+
+Resume the same demand, workspace, authorization revisions and remaining limits. Never reset a leaf checkpoint or dispatch over a surviving command.
+
+- Mutates: **yes**
+- Converge pass: `None`
+- Delegates to: `demand checkpoint and existing loop --resume`
+- Tokens: `DELIVERY=READY_FOR_ACCEPTANCE|ALIGNMENT_REQUIRED|BLOCKED|EXHAUSTED|INTERRUPTED|BUSY|USAGE_ERROR`
+- Example: `cvg deliver resume --demand health`
+
+## `deliver status`
+
+Inspect the project-scoped demand without mutation. Revalidate current alignment and task authority; do not infer acceptance from a frontmatter flag.
+
+- Mutates: **no**
+- Converge pass: `None`
+- Delegates to: `read-only demand evidence verification`
+- Tokens: `DELIVERY=NOT_STARTED|INITIALIZING|PREPARING|ALIGNMENT_REQUIRED|AUTHORIZING|EXECUTING|INTEGRATING|READY_FOR_ACCEPTANCE|BLOCKED`
+- Example: `cvg deliver status --demand health`
 
 ## `init`
 
@@ -321,11 +361,11 @@ Gate the mapping is faithful: 1:1 count, every depends_on edge is one blocked-by
 
 ## `setup`
 
-Readiness board for the canonical workspace, Tier-1 signing, engines, and optional tracker integrations, with the exact next step. Records CHOICES in .cvg/config, never credentials.
+Readiness board for the canonical workspace, Tier-1 signing, engines, optional tracker integrations, and live document-memory status (READY/STALE/UNINITIALIZED/ERROR) with the exact next step. Code indexing stays planned and separate. Inspect only — cvg setup memory performs explicit init/migrate. Records CHOICES in .cvg/config, never credentials.
 
 - Mutates: **no**
 - Converge pass: `None`
-- Delegates to: `native (workspace + signing + doctor + adapter preflight)`
+- Delegates to: `native (workspace + signing + doctor + adapter preflight + memory inspect)`
 - Tokens: `SETUP=READY|INCOMPLETE`
 - Example: `cvg setup`
 
@@ -448,6 +488,76 @@ Per-engine readiness inside the setup surface — the same check as cvg doctor (
 - Delegates to: `sketch-plans-adversarial-review/doctor.sh`
 - Tokens: `DOCTOR=OK|FAIL`
 - Example: `cvg setup engines`
+
+## `setup memory [--vault PATH]`
+
+Explicit document-memory preparation: install the pinned QMD module dependencies, then init or migrate. Ordinary cvg setup only inspects READY/STALE/UNINITIALIZED/ERROR and never auto-init, rebind, or refresh. --vault is init/migrate only; an existing native binding is left in place.
+
+- Mutates: **yes**
+- Converge pass: `None`
+- Delegates to: `native (npm ci --prefix tools/memory + memory init|migrate)`
+- Tokens: `SETUP_MEMORY=OK|ERROR|USAGE_ERROR`
+- Example: `cvg setup memory`
+
+## `memory init`
+
+Bind a named external vault and build the local QMD/BM25 index. Refuses an unmigrated darkfactory binding. Default --root is the git toplevel of the consuming workspace; sidecar .darkfactory is not a different project. No Task-Spec required.
+
+- Mutates: **yes**
+- Converge pass: `None`
+- Delegates to: `tools/memory/index.mjs`
+- Tokens: `MEMORY=READY|STALE|UNINITIALIZED|ERROR`
+- Example: `cvg memory init`
+
+## `memory migrate`
+
+Import an existing darkfactory vault binding into native Converge memory, preserving human vault files. The only import path; init will not implicitly rebind.
+
+- Mutates: **yes**
+- Converge pass: `None`
+- Delegates to: `tools/memory/index.mjs`
+- Tokens: `MEMORY=READY|STALE|UNINITIALIZED|ERROR`
+- Example: `cvg memory migrate`
+
+## `memory refresh`
+
+Rebuild the local document-memory index after sources change. Never runs from cvg setup status.
+
+- Mutates: **yes**
+- Converge pass: `None`
+- Delegates to: `tools/memory/index.mjs`
+- Tokens: `MEMORY=READY|STALE|UNINITIALIZED|ERROR`
+- Example: `cvg memory refresh`
+
+## `memory status`
+
+Inspect native document-memory binding without mutation. Bounded ConvergeMemory/v1 JSON; execution_authorized is always false. Missing dependencies are ERROR and point at cvg setup memory.
+
+- Mutates: **no**
+- Converge pass: `None`
+- Delegates to: `tools/memory/index.mjs`
+- Tokens: `MEMORY=READY|STALE|UNINITIALIZED|ERROR`
+- Example: `cvg memory status`
+
+## `memory search`
+
+Lexical BM25 search over the bound vault and canonical project sources. No Task-Spec required. Default --root is the consuming git repository.
+
+- Mutates: **no**
+- Converge pass: `None`
+- Delegates to: `tools/memory/index.mjs`
+- Tokens: `MEMORY=READY|STALE|UNINITIALIZED|ERROR`
+- Example: `cvg memory search domain`
+
+## `memory read`
+
+Read a bounded slice of one memory source by repo-relative or vault/notes path. Evidence, not authorization.
+
+- Mutates: **no**
+- Converge pass: `None`
+- Delegates to: `tools/memory/index.mjs`
+- Tokens: `MEMORY=READY|STALE|UNINITIALIZED|ERROR`
+- Example: `cvg memory read README.md`
 
 ## `eval <spec>`
 

@@ -178,21 +178,59 @@ done
 # on PATH as the separately installed engine.
 mkdir -p "$TARGET/.agents/bin" "$TARGET/.agents/contracts" "$TARGET/.agents/templates/workspace"
 if [ "$MODE" = "copy" ]; then
+  cp "$CVG_SRC/VERSION" "$TARGET/.agents/VERSION"
+  cp "$CVG_SRC/bin/cvg" "$TARGET/.agents/bin/cvg"
+  cp "$CVG_SRC/bin/_ui.sh" "$TARGET/.agents/bin/.cvg-ui.sh"
   cp "$CVG_SRC/bin/_cvg_compose.py" "$TARGET/.agents/bin/_cvg_compose.py"
+  cp "$CVG_SRC/bin/_cvg_deliver.py" "$TARGET/.agents/bin/_cvg_deliver.py"
   cp "$CVG_SRC/bin/cvg-agent-context.py" "$TARGET/.agents/bin/cvg-agent-context.py"
   cp "$CVG_SRC/bin/cvg-classify-lane.py" "$TARGET/.agents/bin/cvg-classify-lane.py"
+  cp "$CVG_SRC/bin/cvg-snapshot.py" "$TARGET/.agents/bin/cvg-snapshot.py"
   cp "$CVG_SRC/contracts/"*.json "$TARGET/.agents/contracts/"
   cp "$CVG_SRC/templates/workspace/"*.md "$TARGET/.agents/templates/workspace/"
 else
+  ln -sf "$CVG_SRC/VERSION" "$TARGET/.agents/VERSION"
+  ln -sf "$CVG_SRC/bin/cvg" "$TARGET/.agents/bin/cvg"
+  ln -sf "$CVG_SRC/bin/_ui.sh" "$TARGET/.agents/bin/.cvg-ui.sh"
   ln -sf "$CVG_SRC/bin/_cvg_compose.py" "$TARGET/.agents/bin/_cvg_compose.py"
+  ln -sf "$CVG_SRC/bin/_cvg_deliver.py" "$TARGET/.agents/bin/_cvg_deliver.py"
   ln -sf "$CVG_SRC/bin/cvg-agent-context.py" "$TARGET/.agents/bin/cvg-agent-context.py"
   ln -sf "$CVG_SRC/bin/cvg-classify-lane.py" "$TARGET/.agents/bin/cvg-classify-lane.py"
+  ln -sf "$CVG_SRC/bin/cvg-snapshot.py" "$TARGET/.agents/bin/cvg-snapshot.py"
   for contract in "$CVG_SRC"/contracts/*.json; do
     ln -sf "$contract" "$TARGET/.agents/contracts/$(basename "$contract")"
   done
   for template in "$CVG_SRC"/templates/workspace/*.md; do
     ln -sf "$template" "$TARGET/.agents/templates/workspace/$(basename "$template")"
   done
+fi
+
+# Native document memory: module source + pinned lockfile. Never node_modules
+# or cache. `cvg setup memory` runs npm ci in the consuming install.
+MEM_SRC="$CVG_SRC/tools/memory"
+MEM_DEST="$TARGET/.agents/tools/memory"
+if [ ! -f "$MEM_SRC/index.mjs" ] || [ ! -f "$MEM_SRC/package-lock.json" ]; then
+  echo "ERROR: Converge memory module missing at $MEM_SRC" >&2
+  exit 2
+fi
+mkdir -p "$TARGET/.agents/tools"
+if [ -e "$MEM_DEST" ] || [ -L "$MEM_DEST" ]; then
+  if [ "$FORCE" -eq 1 ]; then
+    rm -rf "$MEM_DEST"
+  else
+    printf '  skip   %-32s (exists — use --force to replace)\n' "memory module"
+    MEM_DEST=""
+  fi
+fi
+if [ -n "$MEM_DEST" ]; then
+  if [ "$MODE" = "copy" ]; then
+    mkdir -p "$MEM_DEST/test"
+    cp "$MEM_SRC/"*.mjs "$MEM_SRC/package.json" "$MEM_SRC/package-lock.json" "$MEM_SRC/LICENSE" "$MEM_DEST/"
+    cp "$MEM_SRC/test/"*.test.mjs "$MEM_DEST/test/"
+  else
+    ln -s "$MEM_SRC" "$MEM_DEST"
+  fi
+  printf '  ok     %-32s\n' "memory module"
 fi
 
 # --- 2. the CLI --------------------------------------------------------------
@@ -252,6 +290,8 @@ Next:
   4. inspect readiness, then pick your lane:
        cvg setup
        cvg lane "what you are about to build"
+  5. optional document memory (deps + explicit init/migrate; not on every setup):
+       cvg setup memory
 
 INSTALL=OK
 EOF

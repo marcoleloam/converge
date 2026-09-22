@@ -85,6 +85,12 @@ def worker_family(frontmatter: dict) -> str:
 def pick_judge(requested: str | None, avoid_family: str) -> tuple[str, str]:
     """Choose an installed engine, preferring a DIFFERENT family. -> (engine, strength)"""
     installed = [e for e in ("codex", "kimi", "claude", "gemini") if shutil.which(e)]
+    # Multi-provider harnesses (e.g. OMP) do not identify the worker's model
+    # family. A different CLI is not proof of independent model lineage.
+    if not avoid_family:
+        if requested:
+            return (requested, "unknown") if shutil.which(requested) else ("", "none")
+        return (installed[0], "unknown") if installed else ("", "none")
     if requested:
         if not shutil.which(requested):
             return "", "none"
@@ -354,6 +360,8 @@ def main() -> int:
             print(f"reasoning    {result['reasoning']}")
         if strength == "same-family":
             print("NOTE: judge shares the worker's model family — weaker independence.")
+        if strength == "unknown":
+            print("NOTE: worker model family is unknown — cross-family independence is not proven.")
         print(f"CHECK_VERIFY={result['verdict']}")
         if args.json:
             print(json.dumps(result, indent=2, sort_keys=True))

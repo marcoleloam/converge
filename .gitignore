@@ -60,8 +60,9 @@ temp/legs-e2e/
 # cvg local setup state — tracker choice + the workspace's team UUID, written by
 # `cvg setup`. Not secret (cvg never stores credentials), but workspace-specific:
 # each user runs `cvg setup` for their own board rather than inheriting yours.
-# Machine-local cvg state (tracker choices, identity, projection cache) is
-# ignored, but the repo WRITE FENCE is shipped policy: gate.yaml answers "may ANY
+# Machine-local cvg state (tracker choices, identity, projection cache, and
+# document memory under .cvg/memory/: vault.json, sources.json, cache/index.sqlite)
+# is ignored, but the repo WRITE FENCE is shipped policy: gate.yaml answers "may ANY
 # task ever write here?" and a fence that does not travel protects one laptop.
 # CI asserts it is parseable and active, and reported CHECK_GATE=ABSENT until now.
 # Any .cvg at any depth is machine-local — EXCEPT the repo-root write fence.

@@ -2,18 +2,18 @@
 # bootstrap.sh — clone to a green `make check` with no manual exports.
 #
 # WHY THIS EXISTS
-# A green run needs three things that are not on a normal developer's PATH: the
-# exact Task-Spec 3.8.0 commit (runtime also accepts 3.9.x; this pin is the
-# reviewed pairing), the exact Seamwise 0.2.0 commit, and a Python that can import
-# jsonschema. Before this script those were three README paragraphs, so the
+# A green run needs the exact Task-Spec 3.8.0 commit (runtime also accepts
+# 3.9.x; this pin is the reviewed pairing), the exact Seamwise 0.2.0 commit,
+# a Python that can import jsonschema, and the locked document-memory module.
+# Before this script those were separate setup steps, so the
 # honest onboarding cost was "read carefully, then assemble it yourself."
 #
-# Everything lands under .engines/ and .venv/, both gitignored. The Makefile
-# prefers them automatically, so after this runs `make check` needs no arguments.
+# Dependencies land under .engines/, .venv/, and tools/memory/node_modules/, all gitignored.
+# The Makefile finds them automatically, so `make check` needs no arguments.
 # Idempotent: re-running re-uses what is already correct.
 #
 # Token: BOOTSTRAP=OK | BOOTSTRAP=FAIL
-# bash 3.2 safe. Deps: git, python3.
+# bash 3.2 safe. Deps: git, python3, Node.js >=22.17, npm.
 
 set -uo pipefail
 
@@ -94,6 +94,15 @@ if clone_engine seamwise "$SEAMWISE_REPO" "$SEAMWISE_COMMIT"; then
       *) bad "expected $SEAMWISE_VERSION, got '${got:-nothing}'" ;;
     esac
   fi
+fi
+
+step 4 "locked native document-memory dependencies"
+if ! command -v npm >/dev/null 2>&1; then
+  bad "npm missing; install Node.js >=22.17 and npm"
+elif npm ci --prefix "$REPO/tools/memory"; then
+  ok "document memory dependencies installed without initializing a project vault"
+else
+  bad "could not install document memory dependencies"
 fi
 
 echo

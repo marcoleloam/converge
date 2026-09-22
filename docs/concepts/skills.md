@@ -1,7 +1,21 @@
 # Skills reference
 
-Eleven Converge skills implement the method. Pass 5 Tasking is standalone
-[`taskspec`](https://github.com/luanmorenommaciel/task-spec), not a mirrored skill.
+The native `converge` entry accompanies eleven method skills. Pass 5 Tasking is
+standalone [`taskspec`](https://github.com/luanmorenommaciel/task-spec), not a mirrored skill.
+
+## Native entry · `converge`
+
+**Purpose:** Start or resume a demand through existing `cvg deliver` commands
+and retrieve cited project context through `cvg memory`.
+
+**When:** Deliver this demand, resume it, inspect its current checkpoint, or
+search project document memory.
+
+**Not:** A replacement for owner approval, Task-Spec authorization, independent
+acceptance, or the pass skills. It adds no autonomous execution authority.
+
+**Evidence:** The observed delivery checkpoint and memory citations; `READY`
+memory never means a demand is authorized or accepted.
 
 ## Pass 0 · `idea-to-brd` (optional)
 

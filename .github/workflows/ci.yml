@@ -106,6 +106,11 @@ jobs:
           # Node dependency tree to cache here.
           node-version: "22"
 
+
+      - name: native document memory and vault migration
+        run: |
+          npm ci --prefix tools/memory
+          make check-memory
       - name: actionlint
         if: runner.os == 'Linux'
         # Go's module checksum database verifies this exact released module.
@@ -204,6 +209,9 @@ jobs:
       - name: Codex adapter closes after provider exit
         run: bash tests/test-codex-engine.sh
 
+      - name: OMP adapter preserves policies and bounded completion
+        run: bash tests/test-omp-engine.sh
+
       - name: cvg snapshot — canonical Cockpit read model
         run: bash tests/test-cvg-snapshot.sh
 
@@ -260,6 +268,9 @@ jobs:
         # Hermetic: stub engines only. No model is called and no token spent, so
         # the result cannot drift with a vendor CLI's behaviour.
         run: bash tests/test-loop-kernel.sh
+
+      - name: demand-local delivery recovery and authority
+        run: python3 tests/test-deliver.py
 
       - name: one package, one version
         run: bash tests/test-version-unity.sh

@@ -161,6 +161,30 @@ else
 fi
 drop_ws "$W"
 
+# Bound omp is a first-class engine, not a generic fallback. Dry-run so this
+# row never calls a model; CVG_ENGINES_DIR stubs are unused here.
+W="$(new_ws)"
+python3 - "$W/cvg/execution/T-20260602-golden/execution-profile.yaml" <<'PY'
+import json, sys
+path = sys.argv[1]
+data = json.load(open(path))
+data["enforcement"]["primary_runtime"] = "omp"
+json.dump(data, open(path, "w"), indent=2, sort_keys=True)
+PY
+run_kernel "$W" --dry-run
+if [ "$RK_RC" -eq 0 ] && grep -q 'with omp' <<<"$RK_OUT"; then
+  ok "a bound omp profile selects the omp engine"
+else
+  bad "the loop ignored primary_runtime omp: $RK_OUT"
+fi
+run_kernel "$W" --agent claude --dry-run
+if [ "$RK_RC" -eq 2 ] && grep -q "bound to 'omp'" <<<"$RK_OUT"; then
+  ok "an explicit engine/profile mismatch against omp fails before execution"
+else
+  bad "the loop accepted a runtime different from the bound omp profile: $RK_OUT"
+fi
+drop_ws "$W"
+
 # ---------------------------------------------------------------- STALLED
 W="$(new_ws)"
 run_kernel "$W" --agent tstnoop
@@ -287,6 +311,16 @@ if grep -qE '^TASK_LOOP=(SETTLED|LOCAL_SETTLED)$' <<<"$RK_OUT"; then
   ok "UNAVAILABLE proceeds — absence of a judge is not a refutation"
 else
   bad "UNAVAILABLE was treated as a block"
+fi
+drop_ws "$W"
+
+# A delivery may require independent proof even at low blast radius.
+W="$(new_ws)"
+RK_VERIFIER="$STUBS/verify-unavail.sh" run_kernel "$W" --agent tstfix --require-independent
+if grep -q '^TASK_LOOP=BLOCKED$' <<<"$RK_OUT" && ! grep -q '^ACCEPTED=1' <<<"$RK_OUT"; then
+  ok "required independent verification blocks unavailable judges before acceptance"
+else
+  bad "an unavailable judge was allowed to authorize delivery settlement"
 fi
 drop_ws "$W"
 
@@ -855,6 +889,221 @@ if [ "$RK_OK_STATE" = "TASK_LOOP=STALLED" ] && [ "$RK_OK_RC" -eq 1 ] && [ "$RK_O
   fi
 else
   bad "the baseline run never really looped (${RK_OK_STATE:-no terminal state}, rc=$RK_OK_RC, attempts=$RK_OK_TRIES)"
+fi
+drop_ws "$W"
+
+# ------------------------------------------------- durable resume
+# --resume used to cut a fresh worktree before reading the checkpoint, mint a
+# new handoff --force, and restart ITER/elapsed/tokens. These rows pin the
+# bridge: same worktree, same attempt handoff, monotonic spend, no concurrent
+# dispatch, refuse an altered spec revision, and dry-run/estimate stay inert.
+
+# Dry-run / estimate must not create a worktree, handoff, or attempt dir.
+W="$(new_ws)"
+git -C "$W" add -A >/dev/null 2>&1; git -C "$W" commit --quiet -m red >/dev/null 2>&1
+_wt_before="$(git -C "$W" worktree list | wc -l | tr -d ' ')"
+run_kernel "$W" --dry-run --isolation worktree
+_wt_after="$(git -C "$W" worktree list | wc -l | tr -d ' ')"
+if [ "$_wt_before" = "$_wt_after" ] \
+   && [ ! -e "$W/cvg/loop/T-20260602-golden/state.env" ] \
+   && [ ! -e "$W/cvg/execution/T-20260602-golden/task-handoff.json" ] \
+   && [ ! -d "$W/cvg/loop/T-20260602-golden/attempts" ]; then
+  ok "dry-run creates neither worktree nor handoff nor checkpoint"
+else
+  bad "dry-run left dispatch side-effects"
+fi
+run_kernel "$W" --estimate --isolation worktree
+_wt_est="$(git -C "$W" worktree list | wc -l | tr -d ' ')"
+if [ "$_wt_before" = "$_wt_est" ] \
+   && [ ! -e "$W/cvg/loop/T-20260602-golden/state.env" ] \
+   && [ ! -e "$W/cvg/execution/T-20260602-golden/task-handoff.json" ]; then
+  ok "estimate creates neither worktree nor handoff nor checkpoint"
+else
+  bad "estimate left dispatch side-effects"
+fi
+drop_ws "$W"
+
+# Resume reuses the worktree and continues ITER instead of restarting at 1.
+W="$(new_ws)"
+git -C "$W" add -A >/dev/null 2>&1; git -C "$W" commit --quiet -m red >/dev/null 2>&1
+run_kernel "$W" --agent tstnoop --isolation worktree --max-iterations 1
+_wt1="$(grep -E '^isolation: worktree ' <<<"$RK_OUT" | awk '{print $3}')"
+_hid1=""
+if [ -n "$_wt1" ] && [ -f "$_wt1/cvg/execution/T-20260602-golden/task-handoff.json" ]; then
+  _hid1="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("attempt",{}).get("id",""))' "$_wt1/cvg/execution/T-20260602-golden/task-handoff.json")"
+fi
+_iter1="$(grep -E '^ITER=' "$W/cvg/loop/T-20260602-golden/state.env" 2>/dev/null | head -1)"
+run_kernel "$W" --agent tstnoop --isolation worktree --resume --max-iterations 2
+_wt2="$(grep -E '^isolation: worktree ' <<<"$RK_OUT" | awk '{print $3}')"
+_hid2=""
+if [ -n "$_wt2" ] && [ -f "$_wt2/cvg/execution/T-20260602-golden/task-handoff.json" ]; then
+  _hid2="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("attempt",{}).get("id",""))' "$_wt2/cvg/execution/T-20260602-golden/task-handoff.json")"
+fi
+if [ -n "$_wt1" ] && [ "$_wt1" = "$_wt2" ] && grep -q '(resumed)' <<<"$RK_OUT"; then
+  ok "resume reattaches the existing worktree"
+else
+  bad "resume cut a new worktree (first=$_wt1 second=$_wt2)"
+fi
+if grep -q '── attempt 2/' <<<"$RK_OUT" && ! grep -q '── attempt 1/' <<<"$RK_OUT"; then
+  ok "resume continues ITER instead of restarting at attempt 1"
+else
+  bad "resume redispatched from attempt 1: $(grep -E '── attempt |^TASK_LOOP=' <<<"$RK_OUT" | tr '\n' ' ')"
+fi
+if [ -n "$_hid1" ] && [ "$_hid1" = "$_hid2" ]; then
+  ok "resume reuses the attempt handoff without --force"
+else
+  bad "resume minted a new handoff attempt id ($_hid1 -> $_hid2)"
+fi
+if [ "$_iter1" = "ITER=1" ]; then
+  ok "checkpoint after first run is in the original workspace"
+else
+  bad "durable checkpoint missing from original workspace ($_iter1)"
+fi
+drop_ws "$W"
+
+# Green eval on --resume is pending settlement, never a fresh NO_OP.
+W="$(new_ws)"
+run_kernel "$W" --agent tstnoop --max-iterations 1
+sed -i.bak '/NEVERMATCH/d' "$W/README.md" 2>/dev/null || true
+rm -f "$W/README.md.bak"
+run_kernel "$W" --agent tstnoop --resume --max-iterations 5
+if grep -qE '^TASK_LOOP=(SETTLED|LOCAL_SETTLED)$' <<<"$RK_OUT" \
+   && ! grep -q '^TASK_LOOP=NO_OP$' <<<"$RK_OUT" \
+   && grep -q 'not NO_OP' <<<"$RK_OUT"; then
+  ok "resume of a now-green checkpoint settles instead of NO_OP"
+else
+  bad "resume took the fresh NO_OP shortcut: $(grep -E '^TASK_LOOP=' <<<"$RK_OUT" | tail -1)"
+fi
+drop_ws "$W"
+
+# Prior tier-2 REFUTED must repair, not no-op on the still-green eval.
+W="$(new_ws)"
+RK_VERIFIER="$STUBS/verify-refute.sh" run_kernel "$W" --agent tstfix --verify
+if grep -q '^TASK_LOOP=BLOCKED$' <<<"$RK_OUT"; then
+  ok "refute fixture blocked settlement (setup for resume repair)"
+else
+  bad "refute fixture did not block: $(grep -E '^TASK_LOOP=' <<<"$RK_OUT" | tail -1)"
+fi
+RK_VERIFIER="$STUBS/verify-refute.sh" run_kernel "$W" --agent tstnoop --resume --verify --max-iterations 5
+if grep -q 'tier-2 REFUTED' <<<"$RK_OUT" \
+   && grep -q '── attempt ' <<<"$RK_OUT" \
+   && ! grep -q '^TASK_LOOP=NO_OP$' <<<"$RK_OUT"; then
+  ok "resume after REFUTED dispatches a repair attempt instead of NO_OP"
+else
+  bad "resume after REFUTED did not repair: $(grep -E '── attempt |^TASK_LOOP=' <<<"$RK_OUT" | tr '\n' ' ')"
+fi
+drop_ws "$W"
+
+# Attempt identity is immutable even when task, spec, and base still match.
+W="$(new_ws)"
+run_kernel "$W" --agent tstnoop --max-iterations 1
+python3 - "$W/cvg/execution/T-20260602-golden/task-handoff.json" <<'PY'
+import json, sys
+from pathlib import Path
+path = Path(sys.argv[1])
+data = json.loads(path.read_text())
+data["attempt"]["id"] = "replacement-attempt"
+path.write_text(json.dumps(data))
+PY
+run_kernel "$W" --agent tstnoop --resume --max-iterations 5
+if [ "$RK_RC" -eq 4 ] && grep -q 'handoff changed' <<<"$RK_OUT"; then
+  ok "resume refuses a substituted attempt with the same task and spec"
+else
+  bad "resume accepted a substituted handoff"
+fi
+run_kernel "$W" --agent tstnoop --max-iterations 5
+if [ "$RK_RC" -eq 4 ] && grep -q 'use --resume' <<<"$RK_OUT"; then
+  ok "a fresh invocation cannot reset an existing checkpoint"
+else
+  bad "a fresh invocation restarted an existing attempt"
+fi
+drop_ws "$W"
+
+W="$(new_ws)"
+run_kernel "$W" --require-independent --no-verify
+if [ "$RK_RC" -eq 2 ] && grep -q '^TASK_LOOP=USAGE_ERROR$' <<<"$RK_OUT"; then
+  ok "required independent verification cannot be disabled by a later flag"
+else
+  bad "a later flag bypassed required independent verification"
+fi
+drop_ws "$W"
+
+# Altered spec revision refuses resume (no silent re-bind).
+W="$(new_ws)"
+run_kernel "$W" --agent tstnoop --max-iterations 1
+printf '\n# revision bump\n' >> "$W/cvg/tasks/T-20260602-golden.md"
+run_kernel "$W" --agent tstnoop --resume --max-iterations 5
+if [ "$RK_RC" -eq 4 ] && grep -q 'spec revision changed' <<<"$RK_OUT"; then
+  ok "resume refuses an altered spec revision"
+else
+  bad "resume accepted a changed revision: rc=$RK_RC $(grep -E '^TASK_LOOP=' <<<"$RK_OUT" | tail -1)"
+fi
+drop_ws "$W"
+
+# Concurrent dispatch: a live loop holds the lock.
+W="$(new_ws)"
+stub_engine "" tsthold 'sleep 12; echo "held"; exit 0'
+_hold_pid="$(python3 - "$W" "$KEY" "$SRC" "$STUBS" "$KERNEL" <<'PY'
+import os, subprocess, sys
+workspace, key, source, stubs, kernel = sys.argv[1:]
+env = dict(os.environ, TASKSPEC_SIGNING_KEY=key, CVG_HOME=source,
+           CVG_ENGINES_DIR=stubs, CVG_VERIFIER=stubs + "/verify-uphold.sh")
+process = subprocess.Popen(
+    ["bash", kernel, "--issue", "T-20260602-golden", "--agent", "tsthold",
+     "--isolation", "inplace", "--max-iterations", "1"],
+    cwd=workspace, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    start_new_session=True,
+)
+print(process.pid)
+PY
+)"
+_lock_wait=0
+while [ "$_lock_wait" -lt 40 ]; do
+  [ -f "$W/cvg/loop/T-20260602-golden/lock" ] && break
+  sleep 0.2
+  _lock_wait=$((_lock_wait + 1))
+done
+run_kernel "$W" --agent tstnoop --resume --isolation inplace
+_conc_rc="$RK_RC"
+_conc_out="$RK_OUT"
+python3 - "$_hold_pid" <<'PY'
+import os, signal, sys
+pid = int(sys.argv[1])
+try:
+    assert os.getpgid(pid) == pid
+    os.killpg(pid, signal.SIGTERM)
+except ProcessLookupError:
+    pass
+PY
+if [ "$_conc_rc" -eq 4 ] && grep -q 'already running' <<<"$_conc_out"; then
+  ok "lock refuses concurrent dispatch of the same task"
+else
+  bad "concurrent resume was allowed: rc=$_conc_rc $(grep -E '^TASK_LOOP=' <<<"$_conc_out" | tail -1)"
+fi
+drop_ws "$W"
+
+# Elapsed time on resume is never smaller than the checkpointed spend.
+W="$(new_ws)"
+run_kernel "$W" --agent tstnoop --max-iterations 1
+_st="$W/cvg/loop/T-20260602-golden/state.env"
+python3 - "$_st" <<'PY'
+from pathlib import Path
+import sys
+p = Path(sys.argv[1])
+lines = []
+for line in p.read_text().splitlines():
+    if line.startswith("ELAPSED_PRIOR="):
+        lines.append("ELAPSED_PRIOR=40")
+    else:
+        lines.append(line)
+p.write_text("\n".join(lines) + "\n")
+PY
+run_kernel "$W" --agent tstfix --resume --max-iterations 5
+_el="$(grep -oE 'elapsed [0-9]+s' <<<"$RK_OUT" | tail -1 | awk '{print $2}' | tr -d 's')"
+if [ "${_el:-0}" -ge 40 ] 2>/dev/null; then
+  ok "resume elapsed is not smaller than the checkpointed spend"
+else
+  bad "resume shrank elapsed to ${_el:-missing}"
 fi
 drop_ws "$W"
 

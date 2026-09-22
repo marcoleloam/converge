@@ -46,12 +46,12 @@ export PATH := $(dir $(BOOTSTRAP_TASKSPEC)):$(PATH)
 endif
 
 .PHONY: bootstrap check check-core check-json check-docs check-composed check-package \
-	check-cockpit check-layout check-release-assets check-live-evidence demo-composed release-check
+	check-cockpit check-layout check-release-assets check-live-evidence check-memory demo-composed release-check
 
 bootstrap:
 	bash scripts/bootstrap.sh
 
-check: check-core check-json check-docs check-composed check-package
+check: check-core check-json check-docs check-composed check-package check-memory
 
 check-core:
 	bash skills/task-to-runtime-contract/tests/run-tests.sh
@@ -66,6 +66,7 @@ check-core:
 	bash tests/test-install.sh
 	bash tests/test-clean-room-install-e2e.sh
 	bash tests/test-loop-kernel.sh
+	$(PYTHON) tests/test-deliver.py
 	bash tests/test-codex-engine.sh
 	bash tests/test-version-unity.sh
 	bash skills/idea-to-brd/tests/run-tests.sh
@@ -99,6 +100,9 @@ check-composed:
 check-package:
 	bash tests/test-package.sh
 
+
+check-memory:
+	npm test --prefix tools/memory
 check-cockpit:
 	npm run cockpit:check
 	npm run cockpit:build

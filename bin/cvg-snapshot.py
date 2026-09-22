@@ -1220,7 +1220,8 @@ class CvgRunner:
         environment = {
             key: value
             for key, value in os.environ.items()
-            if key in {"HOME", "PATH", "TMPDIR", "LANG", "LC_ALL"}
+            if key in {"HOME", "PATH", "TMPDIR", "LANG", "LC_ALL",
+                       "CVG_TASKSPEC_BIN", "TASKSPEC_BIN", "CVG_SEAMWISE_BIN"}
         }
         environment.update(
             {

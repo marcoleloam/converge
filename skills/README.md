@@ -1,9 +1,10 @@
 # The Converge Skill Chain
 
-Eleven self-contained agent skills implement the Converge method — **eight
-owned spine skills** (including optional Capture ⓪ and opt-in Register; Pass 5
-uses the standalone Task-Spec engine) and **three utility skills**
-(`evidence-to-next-pass`, `skill-creator`, `pass-to-lesson`).
+The native [`converge`](converge/) entry uses `cvg deliver` and `cvg memory`
+without adding an orchestrator. Eleven method skills remain: **eight owned spine
+skills** (including optional Capture and opt-in Register; Pass 5 uses standalone
+Task-Spec) and **three utilities** (`evidence-to-next-pass`, `skill-creator`,
+`pass-to-lesson`).
 Every skill passes
 the official validator (checked with
 [`skill-creator/scripts/quick_validate.py`](skill-creator/scripts/quick_validate.py)),
@@ -273,7 +274,7 @@ and **exhaustion is a planned landing** — work-in-progress committed, `HANDOFF
 written, `--resume` available. Engines are one adapter file each
 (`scripts/engines/<name>.sh`, two calls: `--available`, `--prompt-file`), so the
 kernel spells no vendor and a hung CLI dies at a watchdog cap.
-**Ships:** `loop-kernel.sh` (the loop), `run-issue-eval.sh` (the level-1 check), `open-issue-pr.sh` (the settlement leg), `engines/{claude,codex,kimi}.sh`, `references/loop-spec.md` (the design + its sources), `references/blocked-task-report.md`. **CLI:** `cvg loop --issue <id>`. **Flags:** `--issue N` (required), `--agent claude|codex|kimi`, `--no-agent`/`--gate-only`, `--max-iterations|--max-seconds|--max-tokens` (tighten only), `--resume`, `--dry-run`, `--allow-external-writes`. **Emits one named terminal state:** `TASK_LOOP=SETTLED|LOCAL_SETTLED|NO_OP|BLOCKED|STALLED|EXHAUSTED|CANCELLED|ERROR` — only the first three exit zero, because an error or an exhausted budget is never a success.
+**Ships:** `loop-kernel.sh` (the loop), `run-issue-eval.sh` (the level-1 check), `open-issue-pr.sh` (the settlement leg), `engines/{claude,codex,kimi,omp}.sh`, `references/loop-spec.md` (the design + its sources), `references/blocked-task-report.md`. **CLI:** `cvg loop --issue <id>`. **Flags:** `--issue N` (required), `--agent claude|codex|kimi|omp`, `--no-agent`/`--gate-only`, `--max-iterations|--max-seconds|--max-tokens` (tighten only), `--resume`, `--dry-run`, `--allow-external-writes`. **Emits one named terminal state:** `TASK_LOOP=SETTLED|LOCAL_SETTLED|NO_OP|BLOCKED|STALLED|EXHAUSTED|CANCELLED|ERROR` — only the first three exit zero, because an error or an exhausted budget is never a success.
 **Gate:** the task's own eval is green — none by hand, none by attempt-count.
 
 ---

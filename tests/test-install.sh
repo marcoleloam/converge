@@ -87,7 +87,13 @@ fi
 # Project-local state must resolve against the consuming repo, even though the
 # PATH command is a symlink back into the Converge tool checkout. Invoke from
 # inside the canonical cvg/ workspace to exercise nearest-project discovery.
-mkdir -p "$T/cvg/tasks"
+(cd "$T" && env -u CVG_HOME -u CVG_PROJECT_ROOT "$T/bin/cvg" init >/dev/null)
+SNAPSHOT_OUT="$(cd "$T" && env -u CVG_HOME -u CVG_PROJECT_ROOT "$T/bin/cvg" snapshot --json)"
+if printf '%s' "$SNAPSHOT_OUT" | python3 -c 'import json,sys; s=json.load(sys.stdin)["data"]["snapshot"]; assert s["source"] == "workspace" and s["schemaVersion"] == "3.0"' 2>/dev/null; then
+  ok "installed CLI produces a real workspace snapshot without the source checkout"
+else
+  bad "installed snapshot command is unavailable or malformed"
+fi
 DRY_OUT="$(cd "$T/cvg/tasks" && env -u CVG_HOME -u CVG_PROJECT_ROOT \
   "$T/bin/cvg" setup identity --map backend:future-engine=dry@example.invalid \
   --dry-run 2>&1)"
@@ -241,6 +247,13 @@ if [ -d "$T2/.agents/skills/idea-to-brd" ] && [ ! -L "$T2/.agents/skills/idea-to
   && [ -f "$T2/.agents/bin/cvg-agent-context.py" ] \
   && [ ! -e "$T2/.agents/bin/cvg-plan-tasks.py" ] \
   && [ -f "$T2/.agents/contracts/converge-composition-receipt-v1.schema.json" ] \
+  && [ -f "$T2/.agents/tools/memory/index.mjs" ] \
+  && [ -f "$T2/.agents/tools/memory/package.json" ] \
+  && [ -f "$T2/.agents/tools/memory/package-lock.json" ] \
+  && [ -f "$T2/.agents/tools/memory/LICENSE" ] \
+  && [ ! -d "$T2/.agents/tools/memory/node_modules" ] \
+  && [ -f "$T2/.agents/skills/converge/SKILL.md" ] \
+  && [ ! -L "$T2/.agents/skills/converge" ] \
   && [ ! -d "$T2/.agents/skills/task-spec" ]; then
   ok "--copy pins Converge skills and helpers without embedding Task-Spec"
 else
@@ -258,6 +271,8 @@ if [ -L "$T3/.agents/skills/idea-to-brd" ] \
   && [ -L "$T3/.agents/bin/cvg-agent-context.py" ] \
   && [ ! -e "$T3/.agents/bin/cvg-plan-tasks.py" ] \
   && [ -L "$T3/.agents/contracts/cli-command-matrix.json" ] \
+  && [ -L "$T3/.agents/tools/memory" ] \
+  && [ -L "$T3/.agents/skills/converge" ] \
   && [ -L "$T3/bin/cvg" ] \
   && "$T3/bin/cvg" version >/dev/null 2>&1; then
   ok "--symlink explicitly enables the live development install"

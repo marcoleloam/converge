@@ -52,10 +52,11 @@ The eval is whatever the task-spec ships — it is written for *your* stack, not
 | Flag | Values | Default | Meaning |
 |------|--------|---------|---------|
 | `--issue N` | issue id / task id / spec path | **required** | The single issue this loop owns. No default — absence is an error. You do not re-pick it. |
-| `--agent` | `claude` \| `codex` \| `kimi` | `claude` | The coding engine that ACTS. `kimi` for mechanical, tightly-specced work; `claude` for judgment work (contract/interface design); `codex` when passed. |
+| `--agent` | `claude` \| `codex` \| `kimi` \| `omp` | `claude` | The coding engine that ACTS. A bound vendor profile selects that engine; a different `--agent` fails before execution. `omp` is detect-only like `kimi`. |
 | `--no-agent` / `--gate-only` | flag | off | Verdict without an attempt. `--no-agent` runs the kernel's preflight and lands `BLOCKED` on RED; `--gate-only` skips the kernel entirely and runs the single-shot verify-and-settle leg. |
 | `--max-iterations` · `--max-seconds` · `--max-tokens` | integer | from the spec | **Tighten** a budget for this run. They can only lower the spec's ceiling — a loop whose limit can be raised at the call site has no limit. |
 | `--resume` | flag | off | Continue from the durable checkpoint instead of restarting — a restart would re-run side effects the previous attempts already applied. |
+| `--require-independent` | flag | off | Require an independent tier-2 `UPHELD` before acceptance; an unavailable judge blocks. Cannot be combined with `--no-verify`. Used by the demand conductor. |
 | `--allow-external-writes` | flag | off | Permit the push/PR leg when the profile's policy does not. |
 | `--dry-run` | flag | off | Print the resolved spec, budgets and engine; touch nothing. |
 | `--base` | branch | detected | Base branch for the diff and the PR. |
@@ -63,6 +64,24 @@ The eval is whatever the task-spec ships — it is written for *your* stack, not
 | `--legacy-no-contract` | flag | off | Supervised migration escape hatch; never use for new execution. |
 
 The engine is a flag, never baked into the skill name. Whoever passes `--issue N` may also pin `--agent`; the loop does not change the issue.
+
+`omp` is a Pass 8 engine (`engines/omp.sh`), not TaskMesh. Its capability matrix
+is detect/unenforced — never prevent — and it is not an FS or network sandbox.
+Independent verification still uses the existing judges (`codex`/`kimi`/`claude`/`gemini`);
+this integration has no OMP judge recipe. Global OMP profiles (modelRoles, auth)
+stay inherited; pass `--model`/`--effort` to select the role. `--no-skills`,
+`--no-rules`, and `--no-extensions` do not disable modelRoles or MCP.
+
+Resume preserves the original workspace/worktree, exact handoff bytes, task revision,
+iteration count and accumulated spend. A substituted handoff or a concurrent live
+attempt is refused. An interrupted in-flight interval with no stop timestamp is
+charged conservatively, capped by that attempt's timeout; an idle pause is not charged.
+Do not restart without `--resume` to reset a checkpoint. A green resumed eval still
+requires settlement, and an earlier `REFUTED` verdict requires a repair attempt.
+
+For Codex, the installed CLI chooses its supported default model. Explicit
+`CVG_CODEX_MODEL` or `CVG_CODEX_MODEL_HAIKU|SONNET|OPUS` overrides are available;
+the adapter does not substitute obsolete vendor model IDs for neutral cost tiers.
 
 ## What makes this a loop and not a gate
 

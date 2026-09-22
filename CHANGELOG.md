@@ -1,7 +1,7 @@
 # Changelog
 
 All notable changes to **Converge** are documented here — the CLI (`bin/cvg`) and
-the eleven Converge-owned skills, which ship as one unit at one version. Task-Spec
+the Converge-owned skills, which ship as one unit at one version. Task-Spec
 is a separately versioned engine with an explicit compatibility range.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
@@ -31,6 +31,38 @@ the standalone repository.
   decks left the working tree.
 
 ### Added
+- **Native project document memory** through `cvg memory init|migrate|refresh|status|search|read`,
+  reusing pinned QMD/BM25 without model inference. Explicit migration preserves
+  external vault identity and notes, backs up ownership metadata, and copies
+  historical records into `cvg/brain/` with conflict and symlink guards.
+- **A native `/skill:converge` entry** calls the existing delivery conductor and
+  retrieves cited project memory, without a darkfactory wrapper or new authority.
+- **Explicit `cvg setup memory`** prepares dependencies and binding; ordinary
+  setup reports actual memory state without writing. Copy/npm installs carry
+  the module and lockfile, not `node_modules`.
+- **Demand-local delivery conduction** through `cvg deliver start|authorize|resume|status`.
+  Existing engines prepare and review the concrete topology, materialize and
+  authorize leaves, bind, execute, independently accept, and verify integration.
+  One explicit initial owner approval covers the digest-bound proposal; business
+  acceptance and external publication remain separate.
+- **Durable native loop recovery** retains the worktree, exact handoff, iteration
+  count, and accumulated spend. Concurrent dispatch, substituted handoffs, changed
+  spec revisions, and restarting an existing checkpoint without `--resume` fail closed.
+- **Required independent review** (`loop --require-independent`) blocks an unavailable
+  judge before acceptance and cannot be disabled by a later `--no-verify`.
+- **OMP is a native Pass 8 executor.** `execution_backend: omp` binds and
+  dispatches to OMP with detect-only path enforcement; conflicting engine
+  overrides still fail. Cost tiers map to the operator's `@smol`, `@task`,
+  and `@slow` roles without replacing their thinking settings. A temporary
+  overlay disables ambient configuration discovery/MCP while retaining model
+  roles, credentials, and explicit provider/tool restrictions. stdin is closed,
+  attempt time is bounded, and provider-error/truncated streams fail closed.
+- **Unknown worker model families are no longer called independent** by the
+  tier-2 judge selector. OMP is multi-provider; its harness name alone does not
+  prove cross-family review. The judge recipes themselves are unchanged.
+- **The installer ships the snapshot helper and VERSION** in both copy and
+  symlink modes, so the installed `cvg snapshot --json` can run outside the
+  source checkout.
 - **A thin Converge knowledge base** at `docs/index.md`: getting-started
   (install, first composed task, reviewer route), authority and compose
   concepts, bind/loop and recovery guides, an honest trust page, and a
@@ -47,6 +79,15 @@ the standalone repository.
   “one package, one version” gate now reads it.
 
 ### Fixed
+- Runtime bind artifacts and Seamwise telemetry are captured before the worker's
+  immutable attempt base, rather than weakening its do-not-touch scope.
+- Resumed worktree evals run against the retained worktree, not the source checkout.
+  Green pending work still settles; a prior refutation dispatches a bounded repair.
+- The Codex adapter uses its installed CLI's default supported model unless
+  `CVG_CODEX_MODEL` or a tier-specific override is provided; expired hard-coded model
+  names no longer prevent otherwise valid dispatch.
+- Installed snapshots preserve explicit Task-Spec/Seamwise binary pins while
+  continuing to isolate project/backlog overrides.
 - **`make check` resolves engine binaries to absolute paths**, so
   `tests/test-cvg-doctor-host.sh` no longer treats a `~/.local/bin` install as
   missing.

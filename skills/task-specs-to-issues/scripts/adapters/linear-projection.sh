@@ -73,23 +73,17 @@ _ln_parent_ref() {
 }
 
 # ---------------------------------------------------------------------------
-# _ln_parent_depth_ok PARENT_UUID — Linear's ONE-LEVEL-DEEP sub-issue guard.
+# _ln_parent_depth_ok PARENT_UUID — allow macro, swimlane, then task.
 # ---------------------------------------------------------------------------
-# Linear sub-issues nest exactly one level: an issue may have a parent OR
-# children, never both. So a PARENT is only a legal nesting target when it has NO
-# parent of its own. Returns 0 (safe to nest under) when PARENT has no parent;
-# nonzero when PARENT is itself a sub-issue (depth would become >1). The CALLER
-# decides what to do with a nonzero — the contract is to tsi_ln_die before any
-# write — so this function never mutates and never aborts on its own.
-# Fail-soft on an UNVERIFIABLE state (empty uuid, missing issue, transport error):
-# returns 0, because "could not read the parent" is not a proven depth violation
-# and must not spuriously abort a registration.
+# The factory tree is three issue levels. A parent may have a parent. It may
+# not have a grandparent. Returns 0 when nesting under PARENT stays within
+# those two hops. Fail-soft on an unverifiable read.
 _ln_parent_depth_ok() {
-  local parent="$1" resp pp
+  local parent="$1" resp grand
   [ -n "$parent" ] || return 0
   resp="$(_linear_gql \
-    'query($id:String!){ issue(id:$id){ parent{ id } } }' \
+    'query($id:String!){ issue(id:$id){ parent{ parent{ id } } } }' \
     "$(jq -n --arg id "$parent" '{id:$id}')" 2>/dev/null)" || return 0
-  pp="$(printf '%s' "$resp" | jq -r '.data.issue.parent.id // empty' 2>/dev/null || printf '')"
-  [ -z "$pp" ]
+  grand="$(printf '%s' "$resp" | jq -r '.data.issue.parent.parent.id // empty' 2>/dev/null || printf '')"
+  [ -z "$grand" ]
 }

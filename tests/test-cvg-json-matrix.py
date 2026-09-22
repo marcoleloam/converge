@@ -160,6 +160,8 @@ def usage_probe(name: str) -> list[str]:
         return ["register", "--check", "--matrix-invalid"]
     if name.startswith("register "):
         return ["register", "--matrix-invalid"]
+    if name.startswith("setup memory"):
+        return ["setup", "memory", "--matrix-invalid"]
     if name.startswith("setup signing"):
         return ["setup", "signing", "--matrix-invalid"]
     if name.startswith("setup tracker"):
@@ -180,6 +182,8 @@ def usage_probe(name: str) -> list[str]:
         return ["setup", "engines", "--matrix-invalid"]
     if name == "setup":
         return ["setup", "--matrix-invalid"]
+    if name.startswith("memory "):
+        return ["memory", name.split()[1], "--matrix-invalid"]
     if name.startswith("doctor runtime-contract"):
         return ["doctor", "runtime-contract", "--matrix-invalid"]
     if name.startswith("doctor "):
@@ -203,7 +207,7 @@ jsonschema.Draft202012Validator.check_schema(RESULT_SCHEMA)
 def main() -> int:
     commands = MATRIX["commands"]
     assert MATRIX["contract"] == "ConvergeCLICommandMatrix/v1"
-    assert MATRIX["command_count"] == 60 == len(commands)
+    assert MATRIX["command_count"] == len(commands)
     seen: set[str] = set()
     calls = 0
     contract_failures = 0
@@ -316,7 +320,9 @@ def main() -> int:
                 usage_exit_anomalies.append(f"{name}:{usage_rc}")
             calls += 1
 
-            if name != "help":
+            if name != "help" and not name.startswith("memory") and not name.startswith(
+                "setup memory"
+            ):
                 missing_engine = {"CVG_TASKSPEC_BIN": "/definitely/missing/taskspec"}
                 if name.startswith(
                     ("compose prepare", "compose review", "compose status")
@@ -340,8 +346,8 @@ def main() -> int:
                 calls += 1
 
     print(
-        f"JSON_MATRIX=PASS forms={len(seen)} calls={calls} usage_failures=60 "
-        f"dependency_contract_failures=59 "
+        f"JSON_MATRIX=PASS forms={len(seen)} calls={calls} usage_failures={len(seen)} "
+        f"dependency_contract_failures={len(seen) - 1} "
         f"serialized_contract_failures={contract_failures}"
     )
     if failed_forms:

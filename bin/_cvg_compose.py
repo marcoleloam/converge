@@ -264,6 +264,14 @@ class Coordinator:
 
     def prepare(self, source: pathlib.Path) -> tuple[str, str, bool]:
         state = self._status()
+        if state.get("reviewed") or state.get("delivery_plan"):
+            binding = load_json(self.source_binding_path)
+            bound_path = pathlib.Path(str(binding.get("path", "")))
+            if not bound_path.is_absolute():
+                bound_path = self.root / bound_path
+            if (source.expanduser().resolve() != bound_path.resolve()
+                    or sha256_file(source.expanduser().resolve()) != binding.get("sha256")):
+                raise ComposeError("source recipe changed; existing decomposition cannot be reused for another demand")
         if state.get("reviewed"):
             return "COMPOSE=PREVIEW_READY", "cvg compose preview", False
         if state.get("delivery_plan"):

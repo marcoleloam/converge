@@ -1,11 +1,11 @@
 # Installation
 
 Converge 0.2.1 accepts Task-Spec **3.8.x or 3.9.x** for every install. Seamwise **0.2.x**
-is required only for `cvg decompose` and `cvg compose`. Node 22 is required only
-for the npm door and Cockpit.
+is required only for `cvg decompose` and `cvg compose`. Document memory needs
+Node.js >=22.17 and npm; the npm door and Cockpit also require Node.
 
-The installer writes eleven Converge skills. It never copies a Task-Spec or
-Seamwise implementation into the consumer.
+The installer writes the native `converge` entry and eleven method skills. It
+never copies a Task-Spec or Seamwise implementation into the consumer.
 
 ## Requirements
 
@@ -14,7 +14,7 @@ Seamwise implementation into the consumer.
 - Python 3
 - Task-Spec 3.8.0 (`0e6180cfc3009bd4ef9cf7ab050b463e10d4af91`)
 - Seamwise 0.2.0 (`5a398169c3fefcb65eb1a47c0cb4f967dfdc0515`) for compose
-- Node 22 only for npm / Cockpit
+- Node.js >=22.17 and npm for document memory (Node is also needed for npm / Cockpit)
 
 Task-Spec 3.9.x is accepted. `cvg` passes the physical workspace and backlog
 paths, so `rebuild-state` keeps `path:` repo-relative instead of embedding a
@@ -47,8 +47,9 @@ CVG_REF=v0.2.0 bash -c "$(curl -fsSL \
 ```
 
 `install.sh` fails if `taskspec` is missing or outside 3.8.x–3.9.x. Copy mode pins
-coordinator, contracts, templates, and skills into the consumer. It does not
-vendor the engines.
+coordinator, contracts, templates, skills, and the internal memory module with
+its lockfile and license into the consumer. It does not vendor the engines or
+copy `node_modules`.
 
 ## Pin the binaries you intend
 
@@ -61,6 +62,30 @@ Without the overrides, `cvg` resolves `taskspec` and `seamwise` from `PATH`.
 A nested `cvg` call that forgets the override can pick a different engine on
 `PATH` — prefer the absolute `CVG_*_BIN` form.
 
+## Set up project memory
+
+Native memory and `/skill:converge` are unreleased additions in this checkout.
+Install the current source checkout rather than the older release tag above:
+
+```bash
+bash /path/to/this-checkout/install.sh --target /absolute/path/to/project --copy
+cd /absolute/path/to/project
+cvg setup memory
+cvg memory status
+```
+
+`setup memory` explicitly installs the locked module dependencies, initializes
+a vault, or migrates an existing darkfactory binding. An existing native binding
+is refreshed, never rebound. `--vault /absolute/path` selects a new vault only
+when no binding exists; a different bound path is rejected.
+
+Migration keeps the same external vault and project identity, backs up legacy
+metadata under `.cvg/memory/migration-backup/`, and preserves notes and historical
+records. `cvg memory migrate` is also available when dependencies are already
+installed. Binding, source manifest, and index are local under `.cvg/memory/`.
+Plain `cvg setup` and `cvg memory status` are read-only and never install
+dependencies. Memory does not require a signing key or authorize execution.
+
 ## What got installed
 
 | Harness | Skill destination |
@@ -69,8 +94,8 @@ A nested `cvg` call that forgets the override can pick a different engine on
 | Claude Code | `.claude/skills/<skill>/` |
 | Grok Build | `.grok/skills/<skill>/` |
 
-Exactly eleven Converge skills. No `skills/task-spec/`. No Seamwise sources.
+The native entry plus eleven method skills. No `skills/task-spec/`. No Seamwise sources.
 
 For local development of this repository, `make bootstrap` clones the pinned
-engine commits under gitignored `.engines/` and a `.venv`. That is a test
-pairing, not a shipped dependency.
+engine commits under gitignored `.engines/`, prepares `.venv`, and installs the
+locked memory dependencies. That is a test pairing, not a shipped engine.

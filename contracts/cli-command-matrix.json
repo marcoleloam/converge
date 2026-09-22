@@ -1,13 +1,49 @@
 {
   "contract": "ConvergeCLICommandMatrix/v1",
   "schema_version": 1,
-  "command_count": 60,
+  "command_count": 71,
   "source_of_truth_for": [
     "agent-context",
     "CLI reference",
     "JSON coverage"
   ],
   "commands": [
+    {
+      "name": "deliver start",
+      "converge_pass": null,
+      "wraps": "demand-local composition preparation",
+      "emits_tokens": ["DELIVERY=ALIGNMENT_REQUIRED|BLOCKED|EXHAUSTED|INTERRUPTED|BUSY|USAGE_ERROR"],
+      "mutating": true,
+      "example": "cvg deliver start --demand health --intent intent.md",
+      "description": "Prepare one isolated demand from its own intent using the existing engine and Seamwise. Present the concrete topology, scopes, evals and limits for initial owner alignment; never reuse another backlog."
+    },
+    {
+      "name": "deliver authorize",
+      "converge_pass": null,
+      "wraps": "compose review/preview/materialize, Task-Spec gate, bind, loop",
+      "emits_tokens": ["DELIVERY=READY_FOR_ACCEPTANCE|ALIGNMENT_REQUIRED|BLOCKED|EXHAUSTED|INTERRUPTED|BUSY|USAGE_ERROR"],
+      "mutating": true,
+      "example": "cvg deliver authorize --demand health --reviewer owner --alignment-digest SHA256",
+      "description": "Explicit owner approval of the exact prepared alignment packet. Native products review and authorize leaves; Converge conducts dependency-ready tasks through independent acceptance and integrated proof. No publication or business acceptance."
+    },
+    {
+      "name": "deliver resume",
+      "converge_pass": null,
+      "wraps": "demand checkpoint and existing loop --resume",
+      "emits_tokens": ["DELIVERY=READY_FOR_ACCEPTANCE|ALIGNMENT_REQUIRED|BLOCKED|EXHAUSTED|INTERRUPTED|BUSY|USAGE_ERROR"],
+      "mutating": true,
+      "example": "cvg deliver resume --demand health",
+      "description": "Resume the same demand, workspace, authorization revisions and remaining limits. Never reset a leaf checkpoint or dispatch over a surviving command."
+    },
+    {
+      "name": "deliver status",
+      "converge_pass": null,
+      "wraps": "read-only demand evidence verification",
+      "emits_tokens": ["DELIVERY=NOT_STARTED|INITIALIZING|PREPARING|ALIGNMENT_REQUIRED|AUTHORIZING|EXECUTING|INTEGRATING|READY_FOR_ACCEPTANCE|BLOCKED"],
+      "mutating": false,
+      "example": "cvg deliver status --demand health",
+      "description": "Inspect the project-scoped demand without mutation. Revalidate current alignment and task authority; do not infer acceptance from a frontmatter flag."
+    },
     {
       "name": "init",
       "converge_pass": null,
@@ -354,13 +390,13 @@
     {
       "name": "setup",
       "converge_pass": null,
-      "wraps": "native (workspace + signing + doctor + adapter preflight)",
+      "wraps": "native (workspace + signing + doctor + adapter preflight + memory inspect)",
       "emits_tokens": [
         "SETUP=READY|INCOMPLETE"
       ],
       "mutating": false,
       "example": "cvg setup",
-      "description": "Readiness board for the canonical workspace, Tier-1 signing, engines, and optional tracker integrations, with the exact next step. Records CHOICES in .cvg/config, never credentials."
+      "description": "Readiness board for the canonical workspace, Tier-1 signing, engines, optional tracker integrations, and live document-memory status (READY/STALE/UNINITIALIZED/ERROR) with the exact next step. Code indexing stays planned and separate. Inspect only — cvg setup memory performs explicit init/migrate. Records CHOICES in .cvg/config, never credentials."
     },
     {
       "name": "setup signing [--force]",
@@ -493,6 +529,83 @@
       "mutating": false,
       "example": "cvg setup engines",
       "description": "Per-engine readiness inside the setup surface — the same check as cvg doctor (>=2 engines, >=1 cross-family)."
+    },
+    {
+      "name": "setup memory [--vault PATH]",
+      "converge_pass": null,
+      "wraps": "native (npm ci --prefix tools/memory + memory init|migrate)",
+      "emits_tokens": [
+        "SETUP_MEMORY=OK|ERROR|USAGE_ERROR"
+      ],
+      "mutating": true,
+      "example": "cvg setup memory",
+      "description": "Explicit document-memory preparation: install the pinned QMD module dependencies, then init or migrate. Ordinary cvg setup only inspects READY/STALE/UNINITIALIZED/ERROR and never auto-init, rebind, or refresh. --vault is init/migrate only; an existing native binding is left in place."
+    },
+    {
+      "name": "memory init",
+      "converge_pass": null,
+      "wraps": "tools/memory/index.mjs",
+      "emits_tokens": [
+        "MEMORY=READY|STALE|UNINITIALIZED|ERROR"
+      ],
+      "mutating": true,
+      "example": "cvg memory init",
+      "description": "Bind a named external vault and build the local QMD/BM25 index. Refuses an unmigrated darkfactory binding. Default --root is the git toplevel of the consuming workspace; sidecar .darkfactory is not a different project. No Task-Spec required."
+    },
+    {
+      "name": "memory migrate",
+      "converge_pass": null,
+      "wraps": "tools/memory/index.mjs",
+      "emits_tokens": [
+        "MEMORY=READY|STALE|UNINITIALIZED|ERROR"
+      ],
+      "mutating": true,
+      "example": "cvg memory migrate",
+      "description": "Import an existing darkfactory vault binding into native Converge memory, preserving human vault files. The only import path; init will not implicitly rebind."
+    },
+    {
+      "name": "memory refresh",
+      "converge_pass": null,
+      "wraps": "tools/memory/index.mjs",
+      "emits_tokens": [
+        "MEMORY=READY|STALE|UNINITIALIZED|ERROR"
+      ],
+      "mutating": true,
+      "example": "cvg memory refresh",
+      "description": "Rebuild the local document-memory index after sources change. Never runs from cvg setup status."
+    },
+    {
+      "name": "memory status",
+      "converge_pass": null,
+      "wraps": "tools/memory/index.mjs",
+      "emits_tokens": [
+        "MEMORY=READY|STALE|UNINITIALIZED|ERROR"
+      ],
+      "mutating": false,
+      "example": "cvg memory status",
+      "description": "Inspect native document-memory binding without mutation. Bounded ConvergeMemory/v1 JSON; execution_authorized is always false. Missing dependencies are ERROR and point at cvg setup memory."
+    },
+    {
+      "name": "memory search",
+      "converge_pass": null,
+      "wraps": "tools/memory/index.mjs",
+      "emits_tokens": [
+        "MEMORY=READY|STALE|UNINITIALIZED|ERROR"
+      ],
+      "mutating": false,
+      "example": "cvg memory search domain",
+      "description": "Lexical BM25 search over the bound vault and canonical project sources. No Task-Spec required. Default --root is the consuming git repository."
+    },
+    {
+      "name": "memory read",
+      "converge_pass": null,
+      "wraps": "tools/memory/index.mjs",
+      "emits_tokens": [
+        "MEMORY=READY|STALE|UNINITIALIZED|ERROR"
+      ],
+      "mutating": false,
+      "example": "cvg memory read README.md",
+      "description": "Read a bounded slice of one memory source by repo-relative or vault/notes path. Evidence, not authorization."
     },
     {
       "name": "eval <spec>",

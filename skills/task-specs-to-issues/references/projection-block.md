@@ -77,11 +77,10 @@ subscribed on the board is never dropped.
 
 ### The two hard rules
 
-- **Parent is one level deep.** Linear sub-issues nest exactly one level — an
-  issue may have a parent *or* children, never both. If `projection.parent`
-  points at a spec that is itself a sub-issue, register **aborts that spec with a
-  clear error** rather than half-writing it (`_ln_parent_depth_ok` → the caller
-  `tsi_ln_die`s). A not-yet-registered parent is a fail-soft skip, not an error:
+- **Parent is two hops.** The factory tree is macro (intent + brainstorm) →
+  swimlane → task. A swimlane may be a sub-issue of the macro and still parent
+  a task. A task may not parent another issue. `_ln_parent_depth_ok` refuses
+  that third hop. A not-yet-registered parent is a fail-soft skip, not an error:
   register upserts in build order, so a declared parent is normally already on
   the board by the time its child is projected.
 - **Structural fields are gated.** `project` and `milestone` *create* tracker

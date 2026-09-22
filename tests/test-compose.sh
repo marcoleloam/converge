@@ -72,6 +72,19 @@ else
   bad "prepare review boundary" "rc=$RC $OUT"
 fi
 
+# A prepared plan belongs to its exact recipe, not merely this directory.
+printf '\n# revised demand\n' >> "$ROOM/recipe.yaml"
+BEFORE="$(state_hash)"
+OUT="$(run --json compose prepare --source recipe.yaml 2>/dev/null)"; RC=$?
+AFTER="$(state_hash)"
+if [ "$RC" -ne 0 ] && [ "$BEFORE" = "$AFTER" ] \
+  && [ "$(printf '%s' "$OUT" | field 'd["token"]')" = "COMPOSE=BLOCKED" ]; then
+  ok "changed intent cannot reuse the previous prepared decomposition"
+else
+  bad "stale-source rejection" "rc=$RC $OUT"
+fi
+cp "$ROOT/tests/fixtures/composed-health-recipe.yaml" "$ROOM/recipe.yaml"
+
 OUT="$(run --json compose preview 2>/dev/null)"; RC=$?
 if [ "$RC" -eq 1 ] \
   && [ "$(printf '%s' "$OUT" | field 'd["token"]')" = "COMPOSE=BLOCKED" ] \

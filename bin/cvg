@@ -828,6 +828,202 @@ _cvg_has_lane() {
 
 _cvg_tracker_adapter() { printf '%s/skills/task-specs-to-issues/scripts/adapters/%s.sh\n' "$CVG_HOME_DIR" "$1"; }
 
+# ---------------------------------------------------------------------------
+# memory — native QMD/BM25 document memory (tools/memory), never a second product.
+# ---------------------------------------------------------------------------
+# Read-only verbs do not require Task-Spec or signing. The module always emits
+# one ConvergeMemory/v1 JSON object; `cvg --json` wraps it in the CLI envelope.
+# Default --root is the git toplevel of the consuming workspace. A sidecar
+# .darkfactory directory is never a different project.
+
+cvg_memory_mod_dir() {
+  local mod="$CVG_HOME_DIR/tools/memory"
+  if [ -d "$mod" ]; then
+    (cd "$mod" && pwd -P)
+  else
+    printf '%s\n' "$mod"
+  fi
+}
+
+cvg_memory_default_root() {
+  local start git_root base
+  start="${CVG_PROJECT_ROOT_DIR:-$PWD}"
+  git_root="$(git -C "$start" rev-parse --show-toplevel 2>/dev/null || true)"
+  if [ -z "$git_root" ]; then
+    printf '%s\n' "$start"
+    return 0
+  fi
+  base="$(basename "$git_root")"
+  if [ "$base" = ".darkfactory" ]; then
+    (cd "$git_root/.." && pwd)
+    return 0
+  fi
+  printf '%s\n' "$git_root"
+}
+
+cvg_memory_json_error() {
+  local status="$1" action="$2" code="$3" message="$4"
+  python3 -c 'import json,sys
+print(json.dumps({
+  "schema": "ConvergeMemory/v1",
+  "status": sys.argv[1],
+  "execution_authorized": False,
+  "action": sys.argv[2],
+  "truncated": False,
+  "code": sys.argv[3],
+  "message": sys.argv[4],
+}, ensure_ascii=False))' "$status" "$action" "$code" "$message"
+}
+
+cvg_memory_invoke() {
+  local mod index node_bin action a
+  mod="$(cvg_memory_mod_dir)"
+  index="$mod/index.mjs"
+  action="error"
+  for a in "$@"; do
+    case "$a" in
+      init|migrate|refresh|status|search|read) action="$a"; break ;;
+    esac
+  done
+  if [ ! -f "$index" ]; then
+    cvg_memory_json_error ERROR "$action" MISSING_DEPENDENCY \
+      "memory module missing at $index — reinstall Converge"
+    return 2
+  fi
+  node_bin="$(command -v node 2>/dev/null || true)"
+  if [ -z "$node_bin" ]; then
+    cvg_memory_json_error ERROR "$action" MISSING_DEPENDENCY \
+      "node not found — install Node.js >=22.17, then run: cvg setup memory"
+    return 2
+  fi
+  if [ ! -d "$mod/node_modules" ]; then
+    cvg_memory_json_error ERROR "$action" MISSING_DEPENDENCY \
+      "memory dependencies missing — run: cvg setup memory"
+    return 2
+  fi
+  "$node_bin" "$index" "$@"
+}
+
+cvg_cmd_memory() {
+  local root="" action="error" seen_action=0
+  local args=()
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --root)
+        if [ $# -lt 2 ]; then
+          cvg_memory_json_error ERROR "$action" USAGE "missing --root value"
+          return 2
+        fi
+        root="$2"
+        shift 2
+        ;;
+      --root=*)
+        root="${1#--root=}"
+        shift
+        ;;
+      *)
+        if [ "$seen_action" -eq 0 ]; then
+          case "$1" in
+            -*) ;;
+            *) action="$1"; seen_action=1 ;;
+          esac
+        fi
+        args+=("$1")
+        shift
+        ;;
+    esac
+  done
+  if [ -z "$root" ]; then
+    root="$(cvg_memory_default_root)"
+  fi
+  cvg_memory_invoke --root "$root" ${args[@]+"${args[@]}"}
+}
+
+cvg_memory_probe_line() {
+  local root="$1" raw
+  raw="$(cvg_memory_invoke status --root "$root" --max-bytes 6000 2>/dev/null || true)"
+  printf '%s' "$raw" | python3 -c 'import json,sys
+raw=sys.stdin.read()
+status, code, message = "ERROR", "IO", "memory status unavailable"
+try:
+    d=json.loads(raw)
+    status=str(d.get("status") or status)
+    code=str(d.get("code") or "")
+    message=str(d.get("message") or "")
+except Exception:
+    pass
+print("\t".join([status, code, message]))'
+}
+
+cvg_setup_memory() {
+  local vault="" root mod node_bin npm_bin action="init" rc=0 out status
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --vault)
+        if [ $# -lt 2 ]; then
+          ui_err "usage: cvg setup memory [--vault PATH]"
+          printf 'SETUP_MEMORY=USAGE_ERROR\n'
+          return 2
+        fi
+        vault="$2"
+        shift 2
+        ;;
+      --vault=*)
+        vault="${1#--vault=}"
+        shift
+        ;;
+      *)
+        ui_err "usage: cvg setup memory [--vault PATH]"
+        printf 'SETUP_MEMORY=USAGE_ERROR\n'
+        return 2
+        ;;
+    esac
+  done
+  root="$(cvg_memory_default_root)"
+  mod="$(cvg_memory_mod_dir)"
+  if [ ! -f "$mod/index.mjs" ] || [ ! -f "$mod/package-lock.json" ]; then
+    ui_err "memory module missing under $mod — reinstall Converge"
+    printf 'SETUP_MEMORY=ERROR\n'
+    return 1
+  fi
+  node_bin="$(command -v node 2>/dev/null || true)"
+  npm_bin="$(command -v npm 2>/dev/null || true)"
+  if [ -z "$node_bin" ] || [ -z "$npm_bin" ]; then
+    ui_err "node/npm not found — install Node.js >=22.17, then retry: cvg setup memory"
+    printf 'SETUP_MEMORY=ERROR\n'
+    return 1
+  fi
+  printf '%sinstalling memory dependencies%s (npm ci --prefix tools/memory)\n' "$UI_DIM" "$UI_RESET" >&2
+  if ! npm ci --prefix "$mod" >&2; then
+    ui_err "npm ci failed for $mod"
+    printf 'SETUP_MEMORY=ERROR\n'
+    return 1
+  fi
+  if [ -f "$root/.cvg/memory/vault.json" ]; then
+    action="refresh"
+  elif [ -d "$root/.darkfactory/brain" ] || { [ -n "$vault" ] && [ -f "$vault/.darkfactory-project.json" ]; }; then
+    action="migrate"
+  fi
+  if [ -n "$vault" ]; then
+    out="$(cvg_memory_invoke "$action" --root "$root" --vault "$vault")" || rc=$?
+  else
+    out="$(cvg_memory_invoke "$action" --root "$root")" || rc=$?
+  fi
+  printf '%s\n' "$out"
+  status="$(printf '%s' "$out" | python3 -c 'import json,sys
+try:
+    print(json.load(sys.stdin).get("status",""))
+except Exception:
+    print("")' 2>/dev/null || true)"
+  if [ "$status" = "READY" ] && [ "$rc" -eq 0 ]; then
+    printf 'SETUP_MEMORY=OK\n'
+    return 0
+  fi
+  printf 'SETUP_MEMORY=ERROR\n'
+  return 1
+}
+
+
 cvg_setup_status() {
   printf '%scvg setup%s %s— connectivity status%s\n' "$UI_BOLD" "$UI_RESET" "$UI_DIM" "$UI_RESET"
   ui_rule
@@ -926,9 +1122,43 @@ cvg_setup_status() {
     printf '  %s[..]%s  lock      projection.lock: none yet (built on first enabled register)\n' "$UI_DIM" "$UI_RESET"
   fi
 
-  # planned areas (brownfield) — visible vision, honest status.
+  # Code indexing remains planned. Document memory is live and inspected only.
   printf '  %s[..]%s  index     codebase indexing (planned)\n' "$UI_DIM" "$UI_RESET"
-  printf '  %s[..]%s  memory    context / memory store (planned)\n' "$UI_DIM" "$UI_RESET"
+  local mem_root mem_line mem_status mem_code mem_msg mem_next
+  mem_root="$(cvg_memory_default_root)"
+  mem_line="$(cvg_memory_probe_line "$mem_root")"
+  IFS="$(printf '\t')" read -r mem_status mem_code mem_msg <<EOF
+$mem_line
+EOF
+  unset IFS
+  mem_next=""
+  case "$mem_status" in
+    READY)
+      printf '  %s[ok]%s  memory    READY (document memory)\n' "$UI_GREEN" "$UI_RESET"
+      ;;
+    STALE)
+      mem_next="cvg memory refresh"
+      printf '  %s[--]%s  memory    STALE — run: %s\n' "$UI_YELLOW" "$UI_RESET" "$mem_next"
+      ;;
+    UNINITIALIZED)
+      if [ -d "$mem_root/.darkfactory/brain" ]; then
+        mem_next="cvg memory migrate"
+      else
+        mem_next="cvg setup memory"
+      fi
+      printf '  %s[--]%s  memory    UNINITIALIZED — run: %s\n' "$UI_YELLOW" "$UI_RESET" "$mem_next"
+      ;;
+    *)
+      if [ "$mem_code" = "MISSING_DEPENDENCY" ]; then
+        mem_next="cvg setup memory"
+      elif [ "$mem_code" = "VAULT" ] && [ -d "$mem_root/.darkfactory/brain" ]; then
+        mem_next="cvg memory migrate"
+      else
+        mem_next="cvg memory status"
+      fi
+      printf '  %s[--]%s  memory    ERROR %s — run: %s\n' "$UI_YELLOW" "$UI_RESET" "${mem_code:-ERROR}" "$mem_next"
+      ;;
+  esac
   ui_rule
 
   if [ "$ready" -eq 1 ]; then
@@ -1694,6 +1924,12 @@ cmd_help() {
   printf '                           non-clobbering and idempotent (CVG_INIT token)\n'
   printf '\n'
   printf '%scomposed flow%s\n' "$UI_CYAN" "$UI_RESET"
+  printf '  deliver start --demand <id> --intent <file>\n'
+  printf '                           prepare an isolated demand and its initial alignment packet\n'
+  printf '  deliver authorize --demand <id> --reviewer <name> --alignment-digest <sha>\n'
+  printf '                           approve that exact packet; conduct native compose/bind/loop\n'
+  printf '  deliver resume|status --demand <id>\n'
+  printf '                           resume durable checkpoints or inspect verified evidence\n'
   printf '  compose prepare --source <recipe>\n'
   printf '                           ask Seamwise to prepare decomposition and stop at review\n'
   printf '  compose review --reviewer <name> --reason <text>\n'
@@ -1750,7 +1986,7 @@ cmd_help() {
   printf '                           saw; fails closed (CHECK_VERIFY token)\n'
   printf '  bind --check --task <spec>\n'
   printf '                           re-check hashes, topology, evidence, and adapters\n'
-  printf '  loop --issue <id> [--agent claude|codex|kimi]\n'
+  printf '  loop --issue <id> [--agent claude|codex|kimi|omp]\n'
   printf '                           Pass 8 · Loop — attempt → verify → repeat, bounded by\n'
   printf '                           iterations · wall-clock · tokens, with a stagnation\n'
   printf '                           detector. Each attempt gets a FRESH context. Lands in\n'
@@ -1829,9 +2065,15 @@ cmd_help() {
   printf '%sevals%s\n' "$UI_CYAN" "$UI_RESET"
   printf '  eval <spec>              run a Task-Spec'\''s own evals\n'
   printf '\n'
+  printf '%smemory%s\n' "$UI_CYAN" "$UI_RESET"
+  printf '  memory init|migrate|refresh|status|search|read [--root REPO] [--vault PATH]\n'
+  printf '                           named-vault document memory (QMD/BM25); JSON out;\n'
+  printf '                           no Task-Spec required for status/search/read\n'
+  printf '\n'
   printf '%ssetup%s\n' "$UI_CYAN" "$UI_RESET"
   printf '  setup                    readiness board (workspace · signing · engines ·\n'
-  printf '                           optional integrations); records CHOICES, never keys\n'
+  printf '                           optional integrations · document memory inspect);\n'
+  printf '                           records CHOICES, never keys. Does not init memory.\n'
   printf '  setup signing [--force]  provision or rotate the repo-local Tier-1 signing key\n'
   printf '                           outside version control\n'
   printf '  setup tracker <t> [--team K]\n'
@@ -1852,6 +2094,9 @@ cmd_help() {
   printf '                           opt in to structure projection (Initiative→Project→\n'
   printf '                           Milestones); default off — plain register is unchanged\n'
   printf '  setup engines            per-engine readiness, same check as doctor\n'
+  printf '  setup memory [--vault PATH]\n'
+  printf '                           install memory deps (npm ci) and explicit init/migrate;\n'
+  printf '                           never auto-rebind; ordinary setup only inspects\n'
   printf '\n'
   printf '%smeta%s\n' "$UI_CYAN" "$UI_RESET"
   printf '  help                     this screen\n'
@@ -1898,6 +2143,12 @@ is_mutating() {
       ;;
     decompose)  return 0 ;;
     review)     for a in "$@"; do case "$a" in --adversary|--adversary=*|--resolve|--resolve=*) return 0 ;; esac; done; return 1 ;;
+    deliver)
+      case "${1:-}" in
+        start|authorize|resume) return 0 ;;
+        *) return 1 ;;
+      esac
+      ;;
     compose)
       case "${1:-}" in
         prepare|review|preview|materialize) return 0 ;;
@@ -1915,9 +2166,15 @@ is_mutating() {
                 done
                 return 0 ;;
     register)   for a in "$@"; do [ "$a" = "--check" ] && return 1; done; return 0 ;;
+    memory)
+      case "${1:-}" in
+        init|migrate|refresh) return 0 ;;
+        *) return 1 ;;
+      esac
+      ;;
     setup)
       case "${1:-}" in
-        signing|tracker|repo|projection|key|harness) return 0 ;;
+        signing|tracker|repo|projection|key|harness|memory) return 0 ;;
         identity)
           shift
           for a in "$@"; do
@@ -1971,9 +2228,12 @@ elif cmd == "bind":
 elif cmd == "setup":
     sub = parts[0] if parts else "status"
     disp = ("setup " + sub).strip() if sub != "status" else "setup"
-elif cmd == "compose":
+elif cmd == "memory":
     sub = parts[0] if parts else ""
-    disp = ("compose " + sub).strip()
+    disp = ("memory " + sub).strip() if sub else "memory"
+elif cmd in {"compose", "deliver"}:
+    sub = parts[0] if parts else ""
+    disp = (cmd + " " + sub).strip()
 PASS = {"capture": 0, "intent": 1, "structure": 2, "decompose": 3, "review": 4, "doctor": 4, "bind": 7, "loop": 8}
 data = {"output": raw.rstrip("\n")}
 next_action = next(
@@ -1993,6 +2253,19 @@ if cmd == "snapshot" and ok:
         data = {"snapshot": snapshot}
 elif cmd in {"agent-context", "manifest"} and isinstance(parsed, dict):
     data = {"agent_context": parsed}
+elif cmd == "deliver":
+    try:
+        delivery = json.loads(next(line for line in raw.splitlines() if line.startswith("{")))
+        if delivery.get("contract") == "ConvergeDelivery/v1":
+            data["delivery"] = delivery
+    except (ValueError, StopIteration, AttributeError):
+        pass
+elif cmd == "memory" and isinstance(parsed, dict) and parsed.get("schema") == "ConvergeMemory/v1":
+    data["memory"] = parsed
+    status = parsed.get("status")
+    if status:
+        token = "MEMORY=" + str(status)
+        verdict = str(status)
 unchanged_verdicts = {"UNCHANGED", "EMPTY", "DRY_RUN", "EXISTS", "DISABLED", "UNMANAGED", "NO_OP"}
 changed = mutating and ok and not dry
 if verdict in unchanged_verdicts or (isinstance(verdict, str) and "UNCHANGED" in verdict):
@@ -2080,7 +2353,8 @@ export CVG_TOOL_HOME="$CVG_HOME_DIR"
 export CVG_PROJECT_ROOT="$CVG_PROJECT_ROOT_DIR"
 # Compatibility for existing adapters that use CVG_HOME_DIR as their tool root.
 export CVG_HOME_DIR
-if [ "$CMD" = "compose" ] || [ "$CMD" = "decompose" ] || [ "$CMD" = "_observe-decomposition" ]; then
+if [ "$CMD" = "compose" ] || [ "$CMD" = "decompose" ] || [ "$CMD" = "_observe-decomposition" ] \
+  || [ "$CMD" = "memory" ] || { [ "$CMD" = "setup" ] && [ "${1:-}" = "memory" ]; }; then
   TASKSPEC_BIN="${CVG_TASKSPEC_BIN:-$(command -v taskspec 2>/dev/null || true)}"
 else
   TASKSPEC_BIN="$(resolve_taskspec)" || exit 3
@@ -2106,6 +2380,14 @@ fi
 export TASKSPEC_ACCEPTANCE_DIR
 
 case "$CMD" in
+  deliver)
+    exec python3 "$CVG_HOME_DIR/bin/_cvg_deliver.py" \
+      --project-root "$CVG_PROJECT_ROOT_DIR" \
+      --cvg-version "$CVG_VERSION" \
+      --seamwise-bin "${CVG_SEAMWISE_BIN:-seamwise}" \
+      --taskspec-bin "$TASKSPEC_BIN" \
+      "$@"
+    ;;
   compose)
     COMPOSER="$CVG_HOME_DIR/bin/_cvg_compose.py"
     [ -f "$COMPOSER" ] || {
@@ -2680,7 +2962,7 @@ case "$CMD" in
         --tasks-dir=*|--agent=*|--max-iterations=*|--max-seconds=*|--max-tokens=*|--base=*|--contract=*|--isolation=*|--judge=*|--lane=*|--model=*|--effort=*|--attempt-seconds=*)
           LOOP_SCAN_I=$((LOOP_SCAN_I + 1))
           ;;
-        --gate-only|--no-agent|--allow-external-writes|--dry-run|--resume|--legacy-no-contract|--keep-worktree|--verify|--no-verify|--estimate)
+        --gate-only|--no-agent|--allow-external-writes|--dry-run|--resume|--legacy-no-contract|--keep-worktree|--verify|--require-independent|--no-verify|--estimate)
           LOOP_SCAN_I=$((LOOP_SCAN_I + 1))
           ;;
         -h|--help) LOOP_SCAN_HELP=1; LOOP_SCAN_I=$((LOOP_SCAN_I + 1)) ;;
@@ -2850,12 +3132,15 @@ case "$CMD" in
       exec bash "$REG" ${REG_PASS[@]+"${REG_PASS[@]}"}
     fi
     ;;
+  memory)
+    cvg_cmd_memory "$@"
+    ;;
   setup)
     # SETUP — the guided connectivity surface. `cvg setup` scans every moving part
-    # (engines · trackers · [index · memory, planned]) and reports readiness + the
-    # exact next step. `cvg setup tracker <t>` validates a backend (adapter
-    # preflight) and records the CHOICE in .cvg/config. Referee-safe: records
-    # choices, NEVER credentials — secrets resolve at runtime from the environment.
+    # (engines · trackers · document memory inspect · [index, planned]) and reports
+    # readiness + the exact next step. `cvg setup memory` explicitly prepares
+    # dependencies and init/migrate/refresh. Referee-safe: records choices,
+    # NEVER credentials — secrets resolve at runtime from the environment.
     SUB="${1:-status}"
     [ $# -gt 0 ] && shift
     case "$SUB" in
@@ -2889,7 +3174,8 @@ case "$CMD" in
         fi
         exec bash "$CVG_HOME_DIR/skills/sketch-plans-adversarial-review/scripts/doctor.sh"
         ;;
-      *)          ui_err "unknown setup part '$SUB' — expected: status | signing | tracker <t> | key [t] | repo | identity | projection | harness | engines"
+      memory)     cvg_setup_memory "$@" ;;
+      *)          ui_err "unknown setup part '$SUB' — expected: status | signing | tracker <t> | key [t] | repo | identity | projection | harness | engines | memory"
                   printf 'SETUP=USAGE_ERROR\n'; exit 2 ;;
     esac
     ;;

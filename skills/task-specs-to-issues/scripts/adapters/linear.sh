@@ -456,16 +456,15 @@ _ln_apply_input() {
 }
 
 # _ln_apply_parent_guarded ISSUE PARENT_SPEC [SORT] — resolve the parent SPEC id to
-# its issue, enforce Linear's one-level-deep rule, then fail-soft apply. The depth
-# violation is the ONE deliberate HARD stop (a >1 nest is a spec bug, not a cosmetic
-# miss, so it must not half-write); a not-yet-registered parent is a fail-soft skip.
+# its issue, allow macro → swimlane → task, then fail-soft apply. A fourth
+# level is the hard stop. A missing parent is a skip, not a half-write.
 _ln_apply_parent_guarded() {
   local issue="$1" pspec="${2:-}" sort="${3:-}" puuid
   [ -n "$issue" ] && [ -n "$pspec" ] || return 0
   puuid="$(_ln_parent_ref "$pspec" 2>/dev/null || true)"
   [ -n "$puuid" ] || return 0   # parent not on the board yet — skip (fail-soft)
   if ! _ln_parent_depth_ok "$puuid"; then
-    tsi_ln_die "projection.parent '$pspec' is itself a sub-issue — Linear nests one level only (re-point it at a top-level issue)"
+    tsi_ln_die "projection.parent '$pspec' is already a task under a swimlane — the factory tree stops at macro → swimlane → task"
   fi
   _ln_set_parent "$issue" "$puuid" "$sort"
 }

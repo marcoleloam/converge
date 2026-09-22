@@ -28,15 +28,19 @@ cd "$ENG_WORKDIR" || exit 4
 # the work, and then BLOCKS forever waiting for an EOF that never arrives. The
 # watchdog eventually kills it at 124 and the whole attempt reads as a timeout,
 # which hides the fact that the model finished minutes earlier.
-# Neutral tier -> this vendor's model ids. Codex names its own families, so the
-# map is a real translation here rather than a pass-through.
+# Model availability depends on the authenticated provider/account. Keep the
+# operator's explicit tier mapping when configured; otherwise let Codex choose
+# its supported default instead of pinning an expired model identifier.
 ENG_ARGS=()
-case "$ENG_MODEL" in
-  haiku)  ENG_ARGS+=(--model gpt-5.4-mini) ;;
-  sonnet) ENG_ARGS+=(--model gpt-5.4) ;;
-  opus)   ENG_ARGS+=(--model gpt-5.4) ;;
-  *)      : ;;   # unknown or unset: ride the CLI default
-esac
+CODEX_MODEL="${CVG_CODEX_MODEL:-}"
+if [ -z "$CODEX_MODEL" ]; then
+  case "$ENG_MODEL" in
+    haiku)  CODEX_MODEL="${CVG_CODEX_MODEL_HAIKU:-}" ;;
+    sonnet) CODEX_MODEL="${CVG_CODEX_MODEL_SONNET:-}" ;;
+    opus)   CODEX_MODEL="${CVG_CODEX_MODEL_OPUS:-}" ;;
+  esac
+fi
+[ -z "$CODEX_MODEL" ] || ENG_ARGS+=(--model "$CODEX_MODEL")
 case "$ENG_EFFORT" in
   low|medium|high) ENG_ARGS+=(-c "model_reasoning_effort=$ENG_EFFORT") ;;
   *)               : ;;

@@ -101,7 +101,6 @@ assert p["schema"] == "cvg.execution-profile.v1"
 assert p["task"]["authorization"]["trust_tier"] == 1
 assert p["topology"]["mode"] == "single"
 assert p["canonical_sources"]["write_scope"].startswith("task_spec.")
-assert len(p["enforcement"]["adapters"]) == 4
 assert p["enforcement"]["receipt_writer"].endswith("write-execution-receipt.py")
 assert p["enforcement"]["primary_runtime"] == "generic"
 assert p["enforcement"]["runtime_selection"] == {
@@ -143,6 +142,44 @@ then
   ok "Task-Spec execution_backend selects the primary runtime"
 else
   bad "Task-Spec runtime selection was not bound into the profile"
+fi
+
+OMP_TASK="$TMP_REPO/tasks/T-20260602-runtime-omp.md"
+OMP_PROFILE="$TMP_REPO/cvg/execution/T-20260602-runtime-omp/execution-profile.yaml"
+OMP_ADAPTER="$TMP_REPO/cvg/execution/T-20260602-runtime-omp/adapters/omp.json"
+sed \
+  -e 's|T-20260602-golden|T-20260602-runtime-omp|g' \
+  -e 's|^execution_backend: any$|execution_backend: omp|' \
+  "$FIXTURE" > "$OMP_TASK"
+(
+  cd "$TMP_REPO"
+  TASKSPEC_SIGNING_KEY="$KEY_FILE" \
+    "$TASKSPEC_ENGINE" gate --stamp --stamp-by runtime-test \
+    tasks/T-20260602-runtime-omp.md >/dev/null
+  TASKSPEC_SIGNING_KEY="$KEY_FILE" CVG_HOME="$TOOL_HOME" "$CVG" bind \
+    --task tasks/T-20260602-runtime-omp.md >/dev/null
+)
+if python3 - "$OMP_PROFILE" "$OMP_ADAPTER" <<'PY'
+import json, sys
+e = json.load(open(sys.argv[1]))["enforcement"]
+assert e["primary_runtime"] == "omp"
+assert e["runtime_selection"]["source"] == "task_spec.execution_backend"
+assert e["runtime_selection"]["inferred_runtime"] == "omp"
+assert e["assurance"] == "detect", e["assurance"]
+assert e["assurance"] != "prevent"
+omp = next(a for a in e["adapters"] if a["runtime"] == "omp")
+kinds = {k: v["enforcement_kind"] for k, v in omp["resolution"]["controls"].items()}
+assert kinds["fs.write"] == "detect"
+assert "prevent" not in kinds.values(), kinds
+adapter = json.load(open(sys.argv[2]))
+assert adapter["schema"] == "cvg.runtime-adapter.v1"
+assert adapter["adapter"] == "omp"
+assert adapter["native_control"]["supports_prewrite_prevention"] is False
+PY
+then
+  ok "execution_backend omp infers detect-only primary_runtime omp"
+else
+  bad "omp was not bound as a detect-only primary runtime"
 fi
 
 cp "$DERIVED_PROFILE" "$DERIVED_PROFILE.bak"
@@ -541,6 +578,10 @@ by = {a["runtime"]: a["resolution"] for a in enforcement["adapters"]}
 assert by["codex"]["controls"]["fs.write"]["enforcement_kind"] == "detect"
 assert by["claude"]["controls"]["fs.write"]["enforcement_kind"] == "detect"
 assert by["generic"]["controls"]["fs.write"]["enforcement_kind"] == "detect"
+omp_kinds = {k: v["enforcement_kind"] for k, v in by["omp"]["controls"].items()}
+kimi_kinds = {k: v["enforcement_kind"] for k, v in by["kimi"]["controls"].items()}
+assert omp_kinds == kimi_kinds, (omp_kinds, kimi_kinds)
+assert "prevent" not in omp_kinds.values(), omp_kinds
 assert enforcement["required_controls"] == ["fs.write"]
 assert enforcement["assurance"] == "detect"  # primary runtime is generic
 PY
@@ -599,6 +640,22 @@ else
   bad "codex should enforce net.egress but the gate refused: $FC_OK"
 fi
 
+# OMP is detect/unenforced like kimi: it cannot satisfy a prevent requirement.
+set +e
+OMP_FC="$(
+  cd "$TMP_REPO" &&
+  TASKSPEC_SIGNING_KEY="$KEY_FILE" CVG_HOME="$TOOL_HOME" "$CVG" bind \
+    --task tasks/T-20260602-golden.md --out .fc/omp.yaml \
+    --runtime omp --require net.egress 2>&1
+)"
+OMP_FC_RC=$?
+set -e
+if [ "$OMP_FC_RC" -ne 0 ] && grep -q 'cannot enforce required control' <<<"$OMP_FC"; then
+  ok "omp cannot prevent net.egress (same unenforced limit as kimi)"
+else
+  bad "omp claimed prevent-level net.egress or skipped the fail-closed gate: $OMP_FC"
+fi
+
 # An explicit waiver is the only other way through, and it is recorded.
 set +e
 FC_W="$(
@@ -634,6 +691,39 @@ assert 'primitive' in a['isolation'] and 'available' in a['isolation']"; then
   ok "runtime attestation probes the host and emits a machine verdict"
 else
   bad "runtime attestation failed"
+fi
+
+# Missing omp is a machine FAIL, never an assumed install. Hide the binary
+# without calling a real model: keep Python and git, but no engine in PATH.
+OMP_HIDE="$(mktemp -d -t cvg-omp-hide.XXXXXX)"
+ln -s "$(command -v python3)" "$OMP_HIDE/python3"
+ln -s "$(command -v git)" "$OMP_HIDE/git"
+set +e
+OMP_ATTEST_OUT="$(
+  PATH="$OMP_HIDE" python3 "$SKILL_DIR/scripts/attest-runtime.py" --runtime omp --json 2>&1
+)"
+OMP_ATTEST_RC=$?
+set -e
+rm -rf "$OMP_HIDE"
+if [ "$OMP_ATTEST_RC" -ne 0 ] \
+  && grep -q '^DOCTOR_RUNTIME_CONTRACT=FAIL$' <<<"$OMP_ATTEST_OUT" \
+  && python3 -c '
+import json, sys
+raw = "\n".join(
+    line for line in sys.stdin.read().splitlines()
+    if not line.startswith("DOCTOR_RUNTIME_CONTRACT=")
+)
+a = json.loads(raw)
+assert a["runtime"] == "omp", a
+assert a["verdict"] == "FAIL", a
+assert a["binary"]["required"] is True
+assert a["binary"]["present"] is False, a
+assert a["claims_prevent"] == [], a
+' <<<"$OMP_ATTEST_OUT"
+then
+  ok "runtime probe FAILs when omp is missing and never claims prevent"
+else
+  bad "missing-omp attestation did not FAIL closed: $OMP_ATTEST_OUT"
 fi
 
 # Every vendor process gets a closed stdin. A headless judge inheriting the

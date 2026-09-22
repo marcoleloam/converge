@@ -11,7 +11,7 @@ Deliberately conservative: a probe that cannot prove a capability reports it as
 absent. Optimism here would defeat the point.
 
 Usage:
-  attest-runtime.py [--runtime generic|claude|codex|kimi] [--json]
+  attest-runtime.py [--runtime generic|claude|codex|kimi|omp] [--json]
 Exit: 0 when the runtime can hold every control it claims; 1 otherwise.
 Token: DOCTOR_RUNTIME_CONTRACT=OK|DEGRADED|FAIL
 """
@@ -71,7 +71,7 @@ def _probe_isolation() -> dict[str, object]:
 
 
 def _probe_binary(runtime: str) -> dict[str, object]:
-    binaries = {"claude": "claude", "codex": "codex", "kimi": "kimi"}
+    binaries = {"claude": "claude", "codex": "codex", "kimi": "kimi", "omp": "omp"}
     if runtime == "generic":
         return {"required": False, "present": True, "detail": "portable guards only"}
     name = binaries.get(runtime, runtime)

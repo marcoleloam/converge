@@ -36,13 +36,13 @@ ok()  { printf '  ok   — %s\n' "$1"; }
 bad() { printf '  FAIL — %s\n' "$1"; FAILED=$((FAILED + 1)); }
 
 # The tracked top-level contract. Every entry here is a deliberate home.
-#   ships to npm   : bin contracts skills templates
+#   ships to npm   : bin contracts skills templates tools
 #   product UI     : apps
 #   proves it works: tests scripts evidence
 #   explains it    : docs
 #   brand          : assets
-ALLOWED_DIRS=".claude-plugin .cvg .github apps assets bin contracts docs evidence scripts skills templates tests"
-ALLOWED_FILES=".briefspec.toml .gitattributes .gitignore .npmignore CHANGELOG.md CLAUDE.md CONTRIBUTING.md LICENSE Makefile README.md VERSION install.sh package.json"
+ALLOWED_DIRS=".claude-plugin .cvg .github apps assets bin contracts docs evidence scripts skills templates tests tools"
+ALLOWED_FILES=".briefspec.toml .gitattributes .gitignore .npmignore AGENTS.md OPERATING.md CHANGELOG.md CLAUDE.md CONTRIBUTING.md LICENSE Makefile README.md VERSION install.sh package.json"
 
 # Directories whose purpose must be stated in a README next to the files.
 README_REQUIRED="assets bin contracts docs evidence scripts skills templates tests"

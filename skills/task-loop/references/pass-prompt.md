@@ -10,7 +10,7 @@ process, in an isolated worktree.
 **Procedure:**
 1. Preflight the ceiling: `cvg loop --estimate --issue <id>` — know the
    budget before you authorize spending it.
-2. `cvg loop --issue <id> --agent claude|codex|kimi`. Flags may only
+2. `cvg loop --issue <id> --agent claude|codex|kimi|omp`. Flags may only
    *tighten* the spec's budgets. Watch for the terminal token:
    `TASK_LOOP=SETTLED` (shipped through the outward legs) ·
    `LOCAL_SETTLED` (success that stopped at a local commit because the

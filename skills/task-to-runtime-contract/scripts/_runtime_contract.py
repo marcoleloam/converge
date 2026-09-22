@@ -16,7 +16,7 @@ SCHEMA = "cvg.execution-profile.v1"
 VERSION = "1.0.0"
 TOPOLOGIES = {"single", "single-explorer", "implementer-verifier", "parallel"}
 PERMISSIONS = {"read-only", "scoped-write"}
-SUPPORTED_RUNTIMES = frozenset({"claude", "codex", "kimi"})
+SUPPORTED_RUNTIMES = frozenset({"claude", "codex", "kimi", "omp"})
 
 
 class ContractError(Exception):
@@ -507,6 +507,13 @@ RUNTIME_CONTROLS: dict[str, dict[str, dict[str, str]]] = {
         "tracker.write": {"kind": "prevent", "mechanism": "network denied by sandbox unless explicitly allowed"},
     },
     "kimi": {
+        "fs.write": {"kind": "detect", "mechanism": "portable postflight diff guard"},
+        "proc.exec": {"kind": "unenforced", "mechanism": "none"},
+        "net.egress": {"kind": "unenforced", "mechanism": "none"},
+        "vcs.push": {"kind": "detect", "mechanism": "settlement policy check"},
+        "tracker.write": {"kind": "detect", "mechanism": "settlement policy check"},
+    },
+    "omp": {
         "fs.write": {"kind": "detect", "mechanism": "portable postflight diff guard"},
         "proc.exec": {"kind": "unenforced", "mechanism": "none"},
         "net.egress": {"kind": "unenforced", "mechanism": "none"},
