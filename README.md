@@ -186,7 +186,7 @@ Pass 5 has no Converge pass-prompt — it uses the standalone Task-Spec CLI dire
 
 No Cursor dest exists in `install.sh`.
 
-**Claude Code plugin.** Claude Code can also load `.claude-plugin/` (`plugin.json` + `marketplace.json`): eleven owned skills + `cvg`; Task-Spec independently installed at 3.8.
+**Claude Code plugin.** Claude Code can also load `.claude-plugin/` (`plugin.json` + `marketplace.json`): eleven owned skills + `cvg`; Task-Spec independently installed at 3.8 or 3.9.
 
 **Router scaffold.** `cvg setup harness` scaffolds `AGENTS.md` (~50 lines, routing only, non-clobbering). Bind (Pass 7B) emits `AGENTS.task.md` (identifiers, not content).
 
@@ -275,7 +275,7 @@ cvg compose --json status
 
 `--json` emits one `ConvergeCLIResult/v1` document. The canonical 60-form matrix is [contracts/cli-command-matrix.json](contracts/cli-command-matrix.json); the human reference is [docs/reference/cli.md](docs/reference/cli.md).
 
-Task-Spec pin remains **3.8.0**; 3.9.x writes an absolute `path:` into `_state.yaml` and is not supported.
+Task-Spec **3.8.x and 3.9.x** are accepted. The reviewed pin remains **3.8.0**. `cvg` passes physical workspace paths so 3.9 `rebuild-state` does not write an absolute `path:` into `_state.yaml`.
 
 ## Install
 
@@ -284,7 +284,7 @@ Task-Spec pin remains **3.8.0**; 3.9.x writes an absolute `path:` into `_state.y
 - Git
 - Bash 3.2 or newer
 - Python 3
-- Task-Spec 3.8.0 for every Converge installation
+- Task-Spec 3.8.x or 3.9.x for every Converge installation (reviewed pin: Task-Spec 3.8.0)
 - Seamwise 0.2.0 only for decomposition and `cvg compose`
 - Node 22 only for the npm door and Cockpit
 

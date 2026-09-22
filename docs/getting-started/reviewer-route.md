@@ -13,7 +13,7 @@ cvg version
 cvg doctor host
 ```
 
-`taskspec version` must be 3.8.x. `seamwise --version` must be 0.2.x.
+`taskspec version` must be 3.8.x or 3.9.x. `seamwise --version` must be 0.2.x.
 `cvg doctor host` reports the coordinator, not the engines' internal suites.
 
 ## 2. Prove compose is read-only until you ask

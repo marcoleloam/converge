@@ -37,7 +37,7 @@ flowchart LR
 
 Compose asks Seamwise for `SeamwiseCapabilities/v1` and refuses the engine if
 it claims `materializes_tasks` or `dispatch_authority`. It asks Task-Spec for
-`TaskSpecCLIResult/v1` and requires 3.8.x.
+`TaskSpecCLIResult/v1` and requires 3.8.x or 3.9.x.
 
 `cvg tasks *` is `exec taskspec …`. `cvg decompose` is an alias for
 `cvg compose prepare`. The npm package is gated against shipping

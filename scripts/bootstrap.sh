@@ -3,8 +3,8 @@
 #
 # WHY THIS EXISTS
 # A green run needs three things that are not on a normal developer's PATH: the
-# exact Task-Spec 3.8.0 commit (3.9.x writes absolute _state.yaml paths and is
-# rejected), the exact Seamwise 0.2.0 commit, and a Python that can import
+# exact Task-Spec 3.8.0 commit (runtime also accepts 3.9.x; this pin is the
+# reviewed pairing), the exact Seamwise 0.2.0 commit, and a Python that can import
 # jsonschema. Before this script those were three README paragraphs, so the
 # honest onboarding cost was "read carefully, then assemble it yourself."
 #

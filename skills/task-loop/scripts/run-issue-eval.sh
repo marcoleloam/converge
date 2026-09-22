@@ -153,8 +153,21 @@ _resolve_workspace_root() {  # _resolve_workspace_root <tasks-dir>
   dirname "$1"
 }
 WORKSPACE_ROOT="$(_resolve_workspace_root "$TASKS_DIR")"
-export TASKSPEC_WORKSPACE_ROOT="$WORKSPACE_ROOT"
-export TASKSPEC_BACKLOG_DIR="$TASKS_DIR"
+physical_dir() {
+  _pd_target="$1"
+  if [ -d "$_pd_target" ]; then
+    (cd "$_pd_target" && pwd -P)
+    return 0
+  fi
+  _pd_parent="$(dirname "$_pd_target")"
+  if [ -d "$_pd_parent" ]; then
+    printf '%s/%s\n' "$(cd "$_pd_parent" && pwd -P)" "$(basename "$_pd_target")"
+    return 0
+  fi
+  printf '%s\n' "$_pd_target"
+}
+export TASKSPEC_WORKSPACE_ROOT="$(physical_dir "$WORKSPACE_ROOT")"
+export TASKSPEC_BACKLOG_DIR="$(physical_dir "$TASKS_DIR")"
 
 # ----- Resolve --issue to a task-spec file -----
 # Portable, bash-3.2-safe: no arrays required for the happy paths.
@@ -316,7 +329,7 @@ fi
 # ----- Run the eval through the standalone Task-Spec engine -----
 TASKSPEC_ENGINE="${CVG_TASKSPEC_BIN:-${TASKSPEC_BIN:-taskspec}}"
 command -v "$TASKSPEC_ENGINE" >/dev/null 2>&1 \
-  || err "Task-Spec engine is unavailable: $TASKSPEC_ENGINE (requires taskspec 3.8.x)"
+  || err "Task-Spec engine is unavailable: $TASKSPEC_ENGINE (requires taskspec 3.8.x or 3.9.x)"
 EVAL_OUT=""
 EVAL_RC=0
 set +e

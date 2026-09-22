@@ -117,9 +117,22 @@ if [ "$(basename "$WORKSPACE_ROOT")" = "cvg" ]; then
 fi
 [ -d "$WORKSPACE_ROOT" ] || WORKSPACE_ROOT="$GIT_ROOT"
 cd "$WORKSPACE_ROOT"
-export TASKSPEC_BACKLOG_DIR="${TASKSPEC_BACKLOG_DIR:-$RESOLVED_TASKS_DIR}"
-export TASKSPEC_WORKSPACE_ROOT="${TASKSPEC_WORKSPACE_ROOT:-$WORKSPACE_ROOT}"
-export TASKSPEC_ACCEPTANCE_DIR="${TASKSPEC_ACCEPTANCE_DIR:-$(dirname "$RESOLVED_TASKS_DIR")/.taskspec/acceptance}"
+physical_dir() {
+  _pd_target="$1"
+  if [ -d "$_pd_target" ]; then
+    (cd "$_pd_target" && pwd -P)
+    return 0
+  fi
+  _pd_parent="$(dirname "$_pd_target")"
+  if [ -d "$_pd_parent" ]; then
+    printf '%s/%s\n' "$(cd "$_pd_parent" && pwd -P)" "$(basename "$_pd_target")"
+    return 0
+  fi
+  printf '%s\n' "$_pd_target"
+}
+export TASKSPEC_BACKLOG_DIR="$(physical_dir "${TASKSPEC_BACKLOG_DIR:-$RESOLVED_TASKS_DIR}")"
+export TASKSPEC_WORKSPACE_ROOT="$(physical_dir "${TASKSPEC_WORKSPACE_ROOT:-$WORKSPACE_ROOT}")"
+export TASKSPEC_ACCEPTANCE_DIR="$(physical_dir "${TASKSPEC_ACCEPTANCE_DIR:-$(dirname "$RESOLVED_TASKS_DIR")/.taskspec/acceptance}")"
 
 # ----- Run the gate first (RED/GREEN decides everything below) -----
 EVAL_ARGS=(--issue "$ISSUE")

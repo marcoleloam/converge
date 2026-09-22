@@ -38,10 +38,11 @@ the standalone repository.
   those repositories.
 
 ### Changed
-- **Task-Spec support is 3.8.x only.** 3.9.0 `rebuild-state` writes an absolute
-  `path:` into `_state.yaml`, so a committed index would embed the developer's
-  home directory. `bin/cvg`, `install.sh`, compose negotiation, and
-  `tests/test-version-unity.sh` now reject anything outside 3.8.x.
+- **Task-Spec 3.8.x and 3.9.x are both accepted.** 3.9.0 `rebuild-state` writes
+  an absolute `path:` when `TASKSPEC_WORKSPACE_ROOT` is a logical path that
+  does not match the physical Git toplevel (`/tmp` on macOS is `/private/tmp`).
+  `cvg` now passes physical workspace and backlog paths, so `_state.yaml`
+  stays repo-relative. Anything outside 3.8.x–3.9.x is still rejected.
 - **Cockpit `package.json` matches `VERSION`.** The
   “one package, one version” gate now reads it.
 

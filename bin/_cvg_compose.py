@@ -176,9 +176,9 @@ class Coordinator:
         environment = os.environ.copy()
         environment.update(
             {
-                "TASKSPEC_WORKSPACE_ROOT": str(self.root),
-                "TASKSPEC_BACKLOG_DIR": str(self.backlog),
-                "TASKSPEC_ACCEPTANCE_DIR": str(self.acceptance),
+                "TASKSPEC_WORKSPACE_ROOT": str(self.root.resolve()),
+                "TASKSPEC_BACKLOG_DIR": str(self.backlog.resolve()),
+                "TASKSPEC_ACCEPTANCE_DIR": str(self.acceptance.resolve()),
                 "NO_COLOR": "1",
             }
         )
@@ -225,8 +225,8 @@ class Coordinator:
         if rc != 0 or version.get("contract") != TASKSPEC_RESULT:
             raise ComposeError("Task-Spec version negotiation failed", exit_code=3, engine=True)
         parsed = version_tuple(self.taskspec_version)
-        if parsed < (3, 8, 0) or parsed >= (3, 9, 0):
-            raise ComposeError("Converge compose requires Task-Spec 3.8.x", exit_code=3, engine=True)
+        if parsed < (3, 8, 0) or parsed >= (3, 10, 0):
+            raise ComposeError("Converge compose requires Task-Spec 3.8.x or 3.9.x", exit_code=3, engine=True)
 
     def _status(self) -> dict[str, Any]:
         value, rc = self._seamwise("status")

@@ -111,15 +111,15 @@ TARGET="$(cd "$TARGET" && pwd)"
 # the consuming repository.
 TASKSPEC_BIN="${CVG_TASKSPEC_BIN:-$(command -v taskspec 2>/dev/null || true)}"
 [ -n "$TASKSPEC_BIN" ] || {
-  echo "ERROR: Task-Spec engine is required. Install taskspec 3.8.x first:" >&2
+  echo "ERROR: Task-Spec engine is required. Install taskspec 3.8.x or 3.9.x first:" >&2
   echo "  git clone https://github.com/luanmorenommaciel/task-spec.git" >&2
   echo "  bash task-spec/install.sh --global --copy" >&2
   exit 2
 }
 TASKSPEC_VERSION="$("$TASKSPEC_BIN" version 2>/dev/null | tail -1 | tr -d '[:space:]')"
 case "$TASKSPEC_VERSION" in
-  3.8.*) ;;
-  *) echo "ERROR: Converge 0.2 requires taskspec 3.8.x (found '$TASKSPEC_VERSION')" >&2; exit 2 ;;
+  3.8.*|3.9.*) ;;
+  *) echo "ERROR: Converge 0.2 requires taskspec 3.8.x or 3.9.x (found '$TASKSPEC_VERSION')" >&2; exit 2 ;;
 esac
 
 if [ "$TARGET" = "$CVG_SRC" ]; then

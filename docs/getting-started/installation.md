@@ -1,6 +1,6 @@
 # Installation
 
-Converge 0.2.1 requires Task-Spec **3.8.x** for every install. Seamwise **0.2.x**
+Converge 0.2.1 accepts Task-Spec **3.8.x or 3.9.x** for every install. Seamwise **0.2.x**
 is required only for `cvg decompose` and `cvg compose`. Node 22 is required only
 for the npm door and Cockpit.
 
@@ -16,8 +16,9 @@ Seamwise implementation into the consumer.
 - Seamwise 0.2.0 (`5a398169c3fefcb65eb1a47c0cb4f967dfdc0515`) for compose
 - Node 22 only for npm / Cockpit
 
-Task-Spec 3.9.x is rejected on purpose: `rebuild-state` writes an absolute
-`path:` into `_state.yaml`.
+Task-Spec 3.9.x is accepted. `cvg` passes the physical workspace and backlog
+paths, so `rebuild-state` keeps `path:` repo-relative instead of embedding a
+home directory when `/tmp` and the Git toplevel disagree.
 
 ## Install in dependency order
 
@@ -45,7 +46,7 @@ CVG_REF=v0.2.0 bash -c "$(curl -fsSL \
   https://raw.githubusercontent.com/luanmorenommaciel/converge/main/install.sh)"
 ```
 
-`install.sh` fails if `taskspec` is missing or not 3.8.x. Copy mode pins
+`install.sh` fails if `taskspec` is missing or outside 3.8.x–3.9.x. Copy mode pins
 coordinator, contracts, templates, and skills into the consumer. It does not
 vendor the engines.
 

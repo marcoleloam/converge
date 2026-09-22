@@ -12,7 +12,7 @@
 # The fix is not to force independent products onto one number. VERSION owns the
 # Converge package; Task-Spec is now an external engine with an explicit compatible
 # range. A Converge declaration must equal VERSION, and the engine boundary must
-# resolve to 3.8.x (release pin 3.8.0). 3.9.x writes absolute _state.yaml paths.
+# resolve to 3.8.x or 3.9.x (reviewed release pin remains 3.8.0).
 #
 # WHAT COUNTS AS A VERSION HERE
 # RELEASE versions unify — they answer "which Converge is this?". SCHEMA/FORMAT
@@ -197,8 +197,8 @@ else
   SCHEMA_OK=1
 fi
 case "$ENGINE" in
-  3.8.*) ok "installed Task-Spec engine is the supported 3.8.x pin ($ENGINE)" ;;
-  *) bad "installed Task-Spec engine is not 3.8.x ('$ENGINE') — 3.9.x writes absolute _state.yaml paths"; SCHEMA_OK=1 ;;
+  3.8.*|3.9.*) ok "installed Task-Spec engine is inside the supported 3.8.x–3.9.x range ($ENGINE)" ;;
+  *) bad "installed Task-Spec engine is outside 3.8.x–3.9.x ('$ENGINE')"; SCHEMA_OK=1 ;;
 esac
 
 echo

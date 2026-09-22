@@ -382,9 +382,24 @@ fi
 # Task-Spec's configured roots must follow the dispatch workspace too. Keeping
 # the original checkout's absolute backlog here would let an isolated attempt
 # append metrics or acceptance state outside its own worktree.
-export TASKSPEC_BACKLOG_DIR="$RESOLVED_TASKS_DIR"
-export TASKSPEC_WORKSPACE_ROOT="$WORKSPACE_ROOT"
-export TASKSPEC_ACCEPTANCE_DIR="$(dirname "$RESOLVED_TASKS_DIR")/.taskspec/acceptance"
+# 3.9 rebuild-state keeps path: repo-relative only when these match the
+# physical Git toplevel. /tmp on macOS is a symlink of /private/tmp.
+physical_dir() {
+  _pd_target="$1"
+  if [ -d "$_pd_target" ]; then
+    (cd "$_pd_target" && pwd -P)
+    return 0
+  fi
+  _pd_parent="$(dirname "$_pd_target")"
+  if [ -d "$_pd_parent" ]; then
+    printf '%s/%s\n' "$(cd "$_pd_parent" && pwd -P)" "$(basename "$_pd_target")"
+    return 0
+  fi
+  printf '%s\n' "$_pd_target"
+}
+export TASKSPEC_BACKLOG_DIR="$(physical_dir "$RESOLVED_TASKS_DIR")"
+export TASKSPEC_WORKSPACE_ROOT="$(physical_dir "$WORKSPACE_ROOT")"
+export TASKSPEC_ACCEPTANCE_DIR="$(physical_dir "$(dirname "$RESOLVED_TASKS_DIR")/.taskspec/acceptance")"
 
 # TaskHandoff/v3 is an ATTEMPT contract, not a bind-time project artifact. Mint
 # it only after the final workspace and immutable base exist. This is what keeps

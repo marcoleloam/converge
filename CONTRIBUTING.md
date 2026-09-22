@@ -19,10 +19,11 @@ engines and pins them to exact commits:
 | Task-Spec | 3.8.0 | `0e6180cfc3009bd4ef9cf7ab050b463e10d4af91` |
 | Seamwise | 0.2.0 | `5a398169c3fefcb65eb1a47c0cb4f967dfdc0515` |
 
-Task-Spec 3.9.x is **rejected on purpose**: its `rebuild-state` writes an
-absolute `path:` into `cvg/tasks/_state.yaml`, which is committed and must stay
-byte-reproducible across machines. `bin/cvg` fails closed rather than let a
-developer's home directory leak into tracked state.
+Runtime accepts Task-Spec **3.8.x and 3.9.x**. `cvg` passes physical
+workspace and backlog paths into the engine. Without that, 3.9 `rebuild-state`
+can write an absolute `path:` into `cvg/tasks/_state.yaml` when a logical path
+such as `/tmp` does not match the physical Git toplevel. The bootstrap pin
+above stays 3.8.0 so `make check` matches the reviewed pairing.
 
 The engine repositories are private. Without access, `make bootstrap` cannot
 fetch them and the suites that need a live engine will not run.
